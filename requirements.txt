@@ -1,0 +1,20 @@
+# StreamForge Backend Dependencies
+# FastAPI and ASGI server dependencies
+
+# Core FastAPI framework
+fastapi==0.104.1
+
+# ASGI server with standard extras (includes uvloop, httptools, websockets)
+uvicorn[standard]==0.24.0
+
+# Required for handling multipart form data
+python-multipart==0.0.6
+
+# Future dependencies (commented out for Phase 0):
+# langchain==0.0.340           # LangChain for LLM orchestration
+# langchain-openai==0.0.2      # OpenAI integration
+# langchain-anthropic==0.0.1   # Anthropic integration
+# python-dotenv==1.0.0         # Environment variable management
+# pydantic-settings==2.1.0     # Settings management
+# chromadb==0.4.18             # Vector store for RAG
+# tiktoken==0.5.2              # Token counting for OpenAI models

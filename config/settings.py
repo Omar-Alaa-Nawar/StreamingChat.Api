@@ -34,8 +34,14 @@ class Settings:
 
     # Component streaming settings (Phase 1)
     ENABLE_COMPONENTS: bool = True  # Enable JSON component streaming
-    COMPONENT_DELIMITER: str = "$$"  # Delimiter for JSON components
+    COMPONENT_DELIMITER: str = "$$$"  # Delimiter for JSON components (Phase 2: changed to $$$)
     COMPONENT_TYPES: list = ["SimpleComponent"]  # Supported component types
+
+    # Phase 2 settings - Progressive component rendering
+    MAX_COMPONENTS_PER_RESPONSE: int = 5  # Maximum components allowed per response
+    COMPONENT_UPDATE_DELAY: float = 0.3  # Delay between component updates in seconds
+    ENABLE_PROGRESSIVE_LOADING: bool = True  # Enable progressive component updates
+    SIMULATE_PROCESSING_TIME: bool = True  # Simulate data loading delays (for demo)
 
     # Future LLM configuration placeholders
     # These will be populated when integrating with LangChain

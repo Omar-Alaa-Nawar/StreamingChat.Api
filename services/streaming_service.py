@@ -243,6 +243,81 @@ def create_simple_component(
     return component.model_dump()
 
 
+async def generate_card_with_delay() -> AsyncGenerator[bytes, None]:
+    """
+    Generate a card with partial progressive update (Phase 2.1 Fix).
+    
+    This pattern demonstrates partial → complete progressive updates:
+    1. Creates component with initial data (title + date + description)
+    2. Waits 5 seconds (simulating data fetch/processing)
+    3. Sends partial update with new fields (units + updated description)
+    
+    Flow:
+        Initial Component (title+date+description) → 5s Delay → Partial Update (units+description)
+    
+    Frontend should merge updates:
+        {title, date, description: "loading..."} → {title, date, description: "success!", units}
+    
+    Yields:
+        bytes: UTF-8 encoded chunks (JSON components only)
+    
+    Example Output:
+        1. $$${"type":"SimpleComponent","id":"abc","data":{"title":"Card Title","date":"...","description":"Generating units... please wait."}}$$$
+        2. [5-second pause]
+        3. $$${"type":"SimpleComponent","id":"abc","data":{"description":"Units added successfully!","units":150}}$$$
+    """
+    logger.info("Pattern: Partial progressive update (title+date+description → units+description after 5s)")
+    
+    # Stage 1: Create component with initial data (title + date + description)
+    component_id = generate_uuid7()
+    initial_data = {
+        "title": "Card Title",
+        "date": datetime.now().isoformat(),
+        "description": "Generating units... please wait."
+    }
+    
+    initial_component = {
+        "type": "SimpleComponent",
+        "id": component_id,
+        "data": initial_data
+    }
+    
+    track_component(component_id, initial_data)
+    component_json = json.dumps(initial_component, separators=(',', ':'))
+    yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+    await asyncio.sleep(0.1)
+    
+    logger.info(f"Sent initial component with title+date+description: {component_id}")
+    
+    # Stage 2: Simulate 5-second delay (data loading/processing)
+    logger.info(f"Starting 5-second delay for component: {component_id}")
+    await asyncio.sleep(5.0)
+    logger.info(f"Delay completed for component: {component_id}")
+    
+    # Stage 3: Send partial update with units and updated description
+    partial_update = {
+        "type": "SimpleComponent",
+        "id": component_id,
+        "data": {
+            "description": "Units added successfully!",
+            "units": 150
+        }
+    }
+    
+    # Update tracked state (merge with existing)
+    existing_data = get_component_state(component_id)
+    merged_data = {**existing_data, **partial_update["data"]}
+    track_component(component_id, merged_data)
+    
+    component_json = json.dumps(partial_update, separators=(',', ':'))
+    yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+    await asyncio.sleep(0.1)
+    
+    logger.info(f"Sent partial update (description+units) for component: {component_id}")
+    
+    logger.info(f"Completed partial progressive update for: {component_id}")
+
+
 async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     """
     Generate streaming response with progressive component updates (Phase 2).
@@ -252,6 +327,10 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     - Supports multiple components (1-5) per response
     - Components matched by ID for updates
     - Simulates real-world data loading patterns
+
+    Phase 2.1 Fix:
+    - Added delayed card update pattern (5-second delay)
+    - Validates progressive component lifecycle with timing
 
     Flow:
     1. Detect user intent from message
@@ -265,6 +344,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     - Multiple components with staggered updates
     - Mixed text and components
     - Incremental data updates
+    - Delayed card update (5-second delay) - Phase 2.1
 
     Args:
         user_message: The user's input message
@@ -286,6 +366,13 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     
     user_message_lower = user_message.lower()
 
+    # Pattern 0: Partial progressive update (Phase 2.1 Fix)
+    # Triggered by "delayed card" or "partial card"
+    if ("delayed" in user_message_lower or "partial" in user_message_lower) and "card" in user_message_lower:
+        async for chunk in generate_card_with_delay():
+            yield chunk
+        return
+    
     # Pattern 1: Single component with progressive loading
     if "card" in user_message_lower and not any(kw in user_message_lower for kw in ["two", "2", "three", "3", "multiple", "several"]):
         logger.info("Pattern: Single component with progressive loading")

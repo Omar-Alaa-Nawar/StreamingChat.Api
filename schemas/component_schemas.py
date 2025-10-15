@@ -7,7 +7,7 @@ React components on the frontend.
 """
 
 from pydantic import BaseModel, Field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Literal
 from datetime import datetime, timezone
 
 
@@ -74,15 +74,52 @@ class SimpleComponentData(BaseModel):
 
 class ChartComponentData(BaseModel):
     """
-    Future: Data payload for chart components.
+    Data payload for Line/Bar Charts (Phase 4).
 
-    Will support:
-    - chartType: "bar", "line", "pie", etc.
-    - data: Array of data points
-    - labels: Axis labels
-    - options: Chart configuration
+    ChartComponent supports progressive data visualization with:
+    - chart_type: "line" or "bar"
+    - title: Chart title/heading
+    - x_axis: Array of x-axis labels
+    - y_axis: Optional array of y-axis values (for reference)
+    - series: Array of data series objects with label and values
+    - total_points: Optional total data points count (for progress tracking)
+
+    Progressive loading pattern:
+    1. Send empty chart with metadata: {"chart_type": "line", "title": "...", "x_axis": [...], "series": []}
+    2. Stream data progressively: {"series": [{"label": "Sales", "values": [1000]}]}
+    3. Frontend merges series values: values = [...existing.values, ...new.values]
+    4. Final state shows complete chart with all data points
+
+    Example:
+        Initial: {"chart_type": "line", "title": "Sales", "x_axis": ["Jan", "Feb"], "series": []}
+        Update 1: {"series": [{"label": "Sales", "values": [1000]}]}
+        Update 2: {"series": [{"label": "Sales", "values": [1000, 1200]}]}
+        Final: {"chart_type": "line", "x_axis": [...], "series": [{"label": "Sales", "values": [1000, 1200]}]}
     """
-    pass
+    chart_type: Literal["line", "bar"] = Field(..., description="Type of chart: line or bar")
+    title: str = Field(..., description="Chart title")
+    x_axis: list[str] = Field(default_factory=list, description="Array of x-axis labels")
+    y_axis: Optional[list[float]] = Field(None, description="Optional y-axis values for reference")
+    series: list[dict] = Field(default_factory=list, description="Array of data series with label and values")
+    total_points: Optional[int] = Field(None, description="Expected total data points (for progress tracking)")
+    timestamp: Optional[str] = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        description="ISO 8601 timestamp"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "chart_type": "line",
+                "title": "Monthly Sales",
+                "x_axis": ["Jan", "Feb", "Mar", "Apr"],
+                "series": [
+                    {"label": "Sales", "values": [1000, 1200, 1800, 2100]}
+                ],
+                "total_points": 4,
+                "timestamp": "2025-10-15T12:34:56.789Z"
+            }
+        }
 
 
 class TableAComponentData(BaseModel):

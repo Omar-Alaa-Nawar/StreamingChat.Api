@@ -365,6 +365,204 @@ def create_filled_table(
 # ============================================================================
 
 
+# ============================================================================
+# Phase 4: ChartComponent Helper Functions
+# ============================================================================
+
+def create_empty_chart(
+    chart_id: str,
+    chart_type: str,
+    title: str,
+    x_axis: list[str],
+    active_components: Dict[str, dict]
+) -> dict:
+    """
+    Create empty chart placeholder with metadata but no data points (Phase 4).
+    
+    This creates a ChartComponent with chart type, title, and axis labels
+    but no series data, used to render an immediate skeleton chart in the frontend.
+    
+    Args:
+        chart_id: UUID for the chart component
+        chart_type: Type of chart ("line" or "bar")
+        title: Chart title
+        x_axis: List of x-axis labels
+        active_components: Request-scoped component tracking dictionary
+        
+    Returns:
+        dict: Empty ChartComponent structure
+        
+    Example:
+        >>> chart = create_empty_chart("chart-1", "line", "Sales Trend", ["Jan", "Feb"], {})
+        >>> print(chart)
+        {
+            "type": "ChartComponent",
+            "id": "chart-1",
+            "data": {
+                "chart_type": "line",
+                "title": "Sales Trend",
+                "x_axis": ["Jan", "Feb"],
+                "series": []
+            }
+        }
+    """
+    component = {
+        "type": "ChartComponent",
+        "id": chart_id,
+        "data": {
+            "chart_type": chart_type,
+            "title": title,
+            "x_axis": x_axis,
+            "series": []
+        }
+    }
+    
+    track_component(chart_id, {
+        "chart_type": chart_type,
+        "title": title,
+        "x_axis": x_axis,
+        "series": []
+    }, active_components)
+    logger.info(f"Created empty {chart_type} chart: {chart_id} with title: {title}")
+    
+    return component
+
+
+def create_chart_data_update(
+    chart_id: str,
+    new_values: list[float],
+    series_label: str,
+    active_components: Dict[str, dict]
+) -> dict:
+    """
+    Append data points to an existing chart series (Phase 4).
+    
+    This adds new data points to an existing ChartComponent series.
+    Backend MERGES values and sends CUMULATIVE array (not just new values).
+    
+    IMPORTANT: Like TableA rows, this sends the FULL cumulative array,
+    not just the increment. Frontend replaces the array completely.
+    
+    Args:
+        chart_id: UUID for the chart component
+        new_values: List of new data points to add
+        series_label: Label for the data series
+        active_components: Request-scoped component tracking dictionary
+        
+    Returns:
+        dict: ChartComponent update with CUMULATIVE values array
+        
+    Example:
+        >>> # Initial state: []
+        >>> update1 = create_chart_data_update("chart-1", [1000], "Sales", {})
+        >>> # Returns: {"series": [{"label": "Sales", "values": [1000]}]}
+        >>> 
+        >>> update2 = create_chart_data_update("chart-1", [1200], "Sales", {})
+        >>> # Returns: {"series": [{"label": "Sales", "values": [1000, 1200]}]}  ← CUMULATIVE!
+    """
+    # Merge with existing state
+    existing_data = get_component_state(chart_id, active_components)
+    existing_series = existing_data.get("series", [])
+    
+    # Find or create series with matching label
+    series_found = False
+    merged_series = []
+    cumulative_values = []
+    
+    for series in existing_series:
+        if series.get("label") == series_label:
+            # Merge values for matching series - CREATE CUMULATIVE ARRAY
+            existing_values = series.get("values", [])
+            cumulative_values = existing_values + new_values  # THIS IS THE CUMULATIVE ARRAY
+            merged_series.append({"label": series_label, "values": cumulative_values})
+            series_found = True
+        else:
+            merged_series.append(series)
+    
+    # If series doesn't exist yet, add it
+    if not series_found:
+        cumulative_values = new_values
+        merged_series.append({"label": series_label, "values": cumulative_values})
+    
+    # Update tracked state with merged data
+    merged_data = {
+        **existing_data,
+        "series": merged_series
+    }
+    track_component(chart_id, merged_data, active_components)
+    
+    total_points = sum(len(s.get("values", [])) for s in merged_series)
+    logger.info(f"Added {len(new_values)} point(s) to chart {chart_id} series '{series_label}'. Total points: {total_points}")
+    
+    # CRITICAL: Return component with CUMULATIVE values (not just new_values)
+    # This matches TableA behavior where backend sends cumulative rows
+    component = {
+        "type": "ChartComponent",
+        "id": chart_id,
+        "data": {
+            "series": [{"label": series_label, "values": cumulative_values}]  # ← CUMULATIVE!
+        }
+    }
+    
+    return component
+
+
+def create_filled_chart(
+    chart_id: str,
+    chart_data: dict,
+    active_components: Dict[str, dict] = None
+) -> dict:
+    """
+    Create complete chart with all data (Phase 4).
+    
+    This creates a fully populated ChartComponent with all metadata and data.
+    Used for single-shot chart rendering without progressive updates.
+    
+    Args:
+        chart_id: UUID for the chart component
+        chart_data: Complete chart data including chart_type, title, x_axis, series, etc.
+        active_components: Request-scoped component tracking dictionary (optional)
+        
+    Returns:
+        dict: Complete ChartComponent structure
+        
+    Example:
+        >>> chart = create_filled_chart(
+        ...     "chart-1",
+        ...     {
+        ...         "chart_type": "line",
+        ...         "title": "Sales",
+        ...         "x_axis": ["Jan", "Feb"],
+        ...         "series": [{"label": "Sales", "values": [1000, 1200]}],
+        ...         "total_points": 2
+        ...     }
+        ... )
+    """
+    data = {
+        **chart_data,
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    component = {
+        "type": "ChartComponent",
+        "id": chart_id,
+        "data": data
+    }
+    
+    if active_components is not None:
+        track_component(chart_id, data, active_components)
+    
+    total_points = sum(len(s.get("values", [])) for s in data.get("series", []))
+    logger.info(f"Created filled {data.get('chart_type')} chart: {chart_id} with {total_points} total points")
+    
+    return component
+
+
+# ============================================================================
+# End Phase 4 Functions
+# ============================================================================
+
+
 def create_simple_component(
     title: str = "Sample Card",
     description: str = "This is a sample component",
@@ -768,14 +966,91 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         
         logger.info(f"Completed TableA streaming: {table_id} with {len(sample_rows)} rows")
     
-    # Pattern 5: Default text-only response
+    # Pattern 5: ChartComponent with progressive data streaming (Phase 4)
+    elif re.search(r'\b(chart|line|bar|graph|plot|trend|revenue|growth|performance|metric)\b', user_message_lower):
+        logger.info("Pattern: ChartComponent with progressive data streaming")
+        
+        # Determine chart type and preset from message
+        chart_type = "line"  # default
+        chart_preset = "sales_line"  # default
+        
+        # Detect chart type from keywords
+        if re.search(r'\bbar\b', user_message_lower):
+            chart_type = "bar"
+            chart_preset = "revenue_bar"
+        elif re.search(r'\b(revenue|performance)\b', user_message_lower):
+            chart_type = "bar"
+            chart_preset = "performance_bar" if "performance" in user_message_lower else "revenue_bar"
+        elif re.search(r'\bgrowth\b', user_message_lower):
+            chart_type = "line"
+            chart_preset = "growth_line"
+        
+        # Get preset chart data
+        preset_data = settings.CHART_TYPES_PRESET.get(chart_preset, {
+            "chart_type": "line",
+            "title": "Sample Chart",
+            "x_axis": ["A", "B", "C"],
+            "series": [{"label": "Data", "values": [10, 20, 30]}]
+        })
+        
+        title = preset_data["title"]
+        x_axis = preset_data["x_axis"]
+        series_data = preset_data["series"][0]  # Get first series
+        series_label = series_data["label"]
+        all_values = series_data["values"]
+        
+        # Limit points based on settings
+        all_values = all_values[:settings.MAX_CHART_POINTS]
+        
+        # Stage 1: Send empty chart with metadata only
+        chart_id = generate_uuid7()
+        empty_chart = create_empty_chart(chart_id, chart_type, title, x_axis, active_components)
+        component_json = json.dumps(empty_chart, separators=(',', ':'))
+        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+        await asyncio.sleep(settings.STREAM_DELAY)
+        
+        # Stage 2: Stream text while "loading"
+        yield "\n".encode("utf-8")
+        loading_text = f"Generating {chart_type} chart"
+        for word in loading_text.split():
+            yield f"{word} ".encode("utf-8")
+            await asyncio.sleep(settings.STREAM_DELAY)
+        
+        # Simulate processing with dots
+        if settings.SIMULATE_PROCESSING_TIME:
+            for i in range(3):
+                yield ".".encode("utf-8")
+                await asyncio.sleep(0.3)
+        
+        yield "\n".encode("utf-8")
+        
+        # Stage 3: Stream data points progressively
+        for i, value in enumerate(all_values):
+            # Send one data point at a time
+            data_update = create_chart_data_update(chart_id, [value], series_label, active_components)
+            component_json = json.dumps(data_update, separators=(',', ':'))
+            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+            
+            # Add delay between points for progressive effect
+            await asyncio.sleep(settings.CHART_POINT_DELAY)
+            
+            # Optional: Stream progress text every few points
+            if (i + 1) % 2 == 0 and i < len(all_values) - 1:
+                yield f"Loaded {i + 1}/{len(all_values)} points... ".encode("utf-8")
+        
+        # Stage 4: Completion message
+        yield f"\n✓ Chart completed with {len(all_values)} data points!".encode("utf-8")
+        
+        logger.info(f"Completed ChartComponent streaming: {chart_id} ({chart_type}) with {len(all_values)} points")
+    
+    # Pattern 6: Default text-only response
     else:
         logger.info("Pattern: Text-only response (no components)")
         
         response_text = (
             "This is a text-only response. "
-            "Try asking for 'a card', 'two cards', 'show me loading states', or 'show me a table' "
-            "to see Phase 3 progressive component rendering in action!"
+            "Try asking for 'a card', 'two cards', 'show me loading states', 'show me a table', or 'show me a chart' "
+            "to see Phase 4 progressive component rendering in action!"
         )
         
         words = response_text.split()

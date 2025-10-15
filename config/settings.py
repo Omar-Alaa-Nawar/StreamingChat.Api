@@ -16,7 +16,8 @@ class Settings:
 
     # Application settings
     APP_NAME: str = "StreamForge API"
-    APP_VERSION: str = "0.3.0"  # Phase 3: TableA component support
+    CURRENT_PHASE: int = 4  # Current development phase
+    APP_VERSION: str = "0.4.0"  # Chart component support (see CURRENT_PHASE)
 
     # CORS settings
     CORS_ORIGINS: list = [
@@ -35,7 +36,7 @@ class Settings:
     # Component streaming settings (Phase 1)
     ENABLE_COMPONENTS: bool = True  # Enable JSON component streaming
     COMPONENT_DELIMITER: str = "$$$"  # Delimiter for JSON components (Phase 2: changed to $$$)
-    COMPONENT_TYPES: list = ["SimpleComponent", "TableA"]  # Supported component types (Phase 3: added TableA)
+    COMPONENT_TYPES: list = ["SimpleComponent", "TableA", "ChartComponent"]  # Supported component types (Phase 4: added ChartComponent)
 
     # Phase 2 settings - Progressive component rendering
     MAX_COMPONENTS_PER_RESPONSE: int = 5  # Maximum components allowed per response
@@ -51,6 +52,36 @@ class Settings:
         "users": ["Username", "Email", "Role", "Status"],
         "products": ["Product", "Category", "Price", "Stock"]
     }  # Predefined table schemas for demo
+
+    # Phase 4 settings - Chart component
+    MAX_CHART_POINTS: int = 50  # Maximum data points per chart
+    CHART_POINT_DELAY: float = 0.2  # Delay between data point updates in seconds
+    CHART_TYPES_PRESET: dict = {
+        "sales_line": {
+            "chart_type": "line",
+            "title": "Sales Over Time",
+            "x_axis": ["Jan", "Feb", "Mar", "Apr", "May"],
+            "series": [{"label": "Sales", "values": [1000, 1200, 1800, 2100, 2400]}]
+        },
+        "revenue_bar": {
+            "chart_type": "bar",
+            "title": "Revenue by Region",
+            "x_axis": ["US", "EU", "APAC", "LATAM"],
+            "series": [{"label": "Revenue", "values": [45000, 38000, 52000, 31000]}]
+        },
+        "growth_line": {
+            "chart_type": "line",
+            "title": "User Growth",
+            "x_axis": ["Week 1", "Week 2", "Week 3", "Week 4"],
+            "series": [{"label": "Active Users", "values": [150, 230, 420, 680]}]
+        },
+        "performance_bar": {
+            "chart_type": "bar",
+            "title": "Performance Metrics",
+            "x_axis": ["API Response", "DB Query", "Cache Hit", "Network"],
+            "series": [{"label": "Latency (ms)", "values": [45, 12, 2, 78]}]
+        }
+    }  # Predefined chart configurations for demo
 
     # Future LLM configuration placeholders
     # These will be populated when integrating with LangChain

@@ -16,7 +16,7 @@ class Settings:
 
     # Application settings
     APP_NAME: str = "StreamForge API"
-    APP_VERSION: str = "0.2.0"  # Phase 1: Component streaming support
+    APP_VERSION: str = "0.3.0"  # Phase 3: TableA component support
 
     # CORS settings
     CORS_ORIGINS: list = [
@@ -35,13 +35,22 @@ class Settings:
     # Component streaming settings (Phase 1)
     ENABLE_COMPONENTS: bool = True  # Enable JSON component streaming
     COMPONENT_DELIMITER: str = "$$$"  # Delimiter for JSON components (Phase 2: changed to $$$)
-    COMPONENT_TYPES: list = ["SimpleComponent"]  # Supported component types
+    COMPONENT_TYPES: list = ["SimpleComponent", "TableA"]  # Supported component types (Phase 3: added TableA)
 
     # Phase 2 settings - Progressive component rendering
     MAX_COMPONENTS_PER_RESPONSE: int = 5  # Maximum components allowed per response
     COMPONENT_UPDATE_DELAY: float = 0.3  # Delay between component updates in seconds
     ENABLE_PROGRESSIVE_LOADING: bool = True  # Enable progressive component updates
     SIMULATE_PROCESSING_TIME: bool = True  # Simulate data loading delays (for demo)
+
+    # Phase 3 settings - TableA component
+    MAX_TABLE_ROWS: int = 20  # Maximum rows per table
+    TABLE_ROW_DELAY: float = 0.2  # Delay between row updates in seconds
+    TABLE_COLUMNS_PRESET: dict = {
+        "sales": ["Name", "Sales", "Region"],
+        "users": ["Username", "Email", "Role", "Status"],
+        "products": ["Product", "Category", "Price", "Stock"]
+    }  # Predefined table schemas for demo
 
     # Future LLM configuration placeholders
     # These will be populated when integrating with LangChain

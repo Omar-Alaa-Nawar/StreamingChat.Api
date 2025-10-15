@@ -205,6 +205,154 @@ def validate_component_update(component_id: str, data: dict) -> bool:
     return True
 
 
+# ============================================================================
+# Phase 3: TableA Helper Functions
+# ============================================================================
+
+def create_empty_table(table_id: str, columns: list[str]) -> dict:
+    """
+    Create empty table placeholder with columns only (Phase 3).
+    
+    This creates a TableA component with column headers but no rows,
+    used to render an immediate skeleton table in the frontend.
+    
+    Args:
+        table_id: UUID for the table component
+        columns: List of column header names
+        
+    Returns:
+        dict: Empty TableA component structure
+        
+    Example:
+        >>> table = create_empty_table("table-1", ["Name", "Sales", "Region"])
+        >>> print(table)
+        {
+            "type": "TableA",
+            "id": "table-1",
+            "data": {
+                "columns": ["Name", "Sales", "Region"],
+                "rows": []
+            }
+        }
+    """
+    component = {
+        "type": "TableA",
+        "id": table_id,
+        "data": {
+            "columns": columns,
+            "rows": []
+        }
+    }
+    
+    track_component(table_id, {"columns": columns, "rows": []})
+    logger.info(f"Created empty table: {table_id} with columns: {columns}")
+    
+    return component
+
+
+def create_table_row_update(table_id: str, new_rows: list[list]) -> dict:
+    """
+    Create a row update for an existing table (Phase 3).
+    
+    This adds new rows to an existing TableA component.
+    Backend will merge rows with existing state.
+    
+    Args:
+        table_id: UUID for the table component
+        new_rows: List of new rows to add (each row is a list of values)
+        
+    Returns:
+        dict: TableA update structure with new rows
+        
+    Example:
+        >>> update = create_table_row_update("table-1", [["Alice", 123, "US"]])
+        >>> print(update)
+        {
+            "type": "TableA",
+            "id": "table-1",
+            "data": {
+                "rows": [["Alice", 123, "US"]]
+            }
+        }
+    """
+    component = {
+        "type": "TableA",
+        "id": table_id,
+        "data": {
+            "rows": new_rows
+        }
+    }
+    
+    # Merge with existing state
+    existing_data = get_component_state(table_id)
+    existing_rows = existing_data.get("rows", [])
+    merged_rows = existing_rows + new_rows
+    
+    merged_data = {
+        **existing_data,
+        "rows": merged_rows
+    }
+    track_component(table_id, merged_data)
+    
+    logger.info(f"Added {len(new_rows)} row(s) to table {table_id}. Total rows: {len(merged_rows)}")
+    
+    return component
+
+
+def create_filled_table(
+    table_id: str,
+    columns: list[str],
+    rows: list[list],
+    total_rows: int = None
+) -> dict:
+    """
+    Create complete table with all data (Phase 3).
+    
+    This creates a fully populated TableA component with columns and all rows.
+    Used for single-shot table rendering without progressive updates.
+    
+    Args:
+        table_id: UUID for the table component
+        columns: List of column header names
+        rows: List of all rows (each row is a list of values)
+        total_rows: Optional total row count for progress tracking
+        
+    Returns:
+        dict: Complete TableA component structure
+        
+    Example:
+        >>> table = create_filled_table(
+        ...     "table-1",
+        ...     ["Name", "Sales"],
+        ...     [["Alice", 100], ["Bob", 200]],
+        ...     total_rows=2
+        ... )
+    """
+    data = {
+        "columns": columns,
+        "rows": rows,
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    if total_rows is not None:
+        data["total_rows"] = total_rows
+    
+    component = {
+        "type": "TableA",
+        "id": table_id,
+        "data": data
+    }
+    
+    track_component(table_id, data)
+    logger.info(f"Created filled table: {table_id} with {len(rows)} rows")
+    
+    return component
+
+
+# ============================================================================
+# End Phase 3 Functions
+# ============================================================================
+
 
 def create_simple_component(
     title: str = "Sample Card",
@@ -245,19 +393,19 @@ def create_simple_component(
 
 async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     """
-    Generate streaming response with progressive component updates (Phase 2).
+    Generate streaming response with progressive component updates (Phase 3).
 
-    Phase 2 Implementation:
-    - Streams components in stages: empty → text → data
-    - Supports multiple components (1-5) per response
-    - Components matched by ID for updates
-    - Simulates real-world data loading patterns
+    Phase 3 Implementation:
+    - Extends Phase 2 with TableA component support
+    - Streams table rows progressively: skeleton → row-by-row → complete
+    - Maintains backward compatibility with all Phase 2 patterns
+    - Supports multiple component types: SimpleComponent, TableA
 
     Flow:
     1. Detect user intent from message
     2. Send empty component(s) as placeholder(s)
     3. Stream explanatory text while "loading"
-    4. Update component(s) with actual data
+    4. Update component(s) with actual data (incrementally for tables)
     5. Stream completion message
 
     Supported patterns:
@@ -265,6 +413,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     - Multiple components with staggered updates
     - Mixed text and components
     - Incremental data updates
+    - TableA with progressive row streaming (Phase 3 NEW)
 
     Args:
         user_message: The user's input message
@@ -272,14 +421,15 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     Yields:
         bytes: UTF-8 encoded chunks (text or JSON components)
 
-    Example Output:
-        User: "show me a card"
+    Example Output (TableA):
+        User: "show me sales table"
         
         Stream:
-        1. $$${"type":"SimpleComponent","id":"abc","data":{}}$$$
-        2. "Loading your card..."
-        3. $$${"type":"SimpleComponent","id":"abc","data":{"title":"Card",...}}$$$
-        4. " Done!"
+        1. $$${"type":"TableA","id":"abc","data":{"columns":[...],"rows":[]}}$$$
+        2. "Loading data..."
+        3. $$${"type":"TableA","id":"abc","data":{"rows":[["Alice",100,"US"]]}}$$$
+        4. $$${"type":"TableA","id":"abc","data":{"rows":[["Bob",200,"UK"]]}}$$$
+        5. "✓ All rows loaded!"
     """
     # Clear active components for new response
     active_components.clear()
@@ -430,14 +580,98 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         
         logger.info(f"Completed incremental updates for: {component_id}")
     
-    # Pattern 4: Default text-only response
+    # Pattern 4: TableA with progressive row streaming (Phase 3)
+    elif "table" in user_message_lower or "sales" in user_message_lower or "users" in user_message_lower or "products" in user_message_lower:
+        logger.info("Pattern: TableA with progressive row streaming")
+        
+        # Determine table type from message
+        table_type = "sales"  # default
+        if "users" in user_message_lower or "user" in user_message_lower:
+            table_type = "users"
+        elif "products" in user_message_lower or "product" in user_message_lower:
+            table_type = "products"
+        
+        # Get columns for this table type
+        columns = settings.TABLE_COLUMNS_PRESET.get(table_type, ["Column 1", "Column 2", "Column 3"])
+        
+        # Generate sample data based on table type
+        if table_type == "sales":
+            sample_rows = [
+                ["Alice Johnson", 12500, "North America"],
+                ["Bob Smith", 23400, "Europe"],
+                ["Carlos Rodriguez", 34500, "Latin America"],
+                ["Diana Chen", 18900, "Asia Pacific"],
+                ["Ethan Brown", 29200, "North America"]
+            ]
+        elif table_type == "users":
+            sample_rows = [
+                ["alice_j", "alice@example.com", "Admin", "Active"],
+                ["bob_smith", "bob@example.com", "User", "Active"],
+                ["carlos_r", "carlos@example.com", "Manager", "Active"],
+                ["diana_c", "diana@example.com", "User", "Inactive"],
+                ["ethan_b", "ethan@example.com", "User", "Active"]
+            ]
+        else:  # products
+            sample_rows = [
+                ["Laptop Pro", "Electronics", 1299.99, 45],
+                ["Desk Chair", "Furniture", 249.99, 120],
+                ["Coffee Maker", "Appliances", 89.99, 78],
+                ["Monitor 27\"", "Electronics", 399.99, 32],
+                ["Standing Desk", "Furniture", 549.99, 15]
+            ]
+        
+        # Limit rows based on settings
+        sample_rows = sample_rows[:settings.MAX_TABLE_ROWS]
+        
+        # Stage 1: Send empty table with columns only
+        table_id = generate_uuid7()
+        empty_table = create_empty_table(table_id, columns)
+        component_json = json.dumps(empty_table, separators=(',', ':'))
+        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+        await asyncio.sleep(settings.STREAM_DELAY)
+        
+        # Stage 2: Stream text while "loading"
+        yield "\n".encode("utf-8")
+        loading_text = f"Here's your {table_type} table. Loading data"
+        for word in loading_text.split():
+            yield f"{word} ".encode("utf-8")
+            await asyncio.sleep(settings.STREAM_DELAY)
+        
+        # Simulate processing with dots
+        if settings.SIMULATE_PROCESSING_TIME:
+            for i in range(3):
+                yield ".".encode("utf-8")
+                await asyncio.sleep(0.3)
+        
+        yield "\n".encode("utf-8")
+        
+        # Stage 3: Stream rows progressively
+        for i, row in enumerate(sample_rows):
+            # Send one row at a time
+            row_update = create_table_row_update(table_id, [row])
+            component_json = json.dumps(row_update, separators=(',', ':'))
+            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+            
+            # Add delay between rows for progressive effect
+            await asyncio.sleep(settings.TABLE_ROW_DELAY)
+            
+            # Optional: Stream progress text every few rows
+            if (i + 1) % 2 == 0 and i < len(sample_rows) - 1:
+                yield f"Loaded {i + 1} rows... ".encode("utf-8")
+        
+        # Stage 4: Completion message
+        yield f"\n✓ All {len(sample_rows)} rows loaded successfully!".encode("utf-8")
+        
+        logger.info(f"Completed TableA streaming: {table_id} with {len(sample_rows)} rows")
+    
+    # Pattern 5: Default text-only response
     else:
         logger.info("Pattern: Text-only response (no components)")
         
         response_text = (
             "This is a text-only response. "
-            "Try asking for 'a card', 'two cards', or 'show me loading states' "
-            "to see Phase 2 progressive component rendering in action!"
+            "Try asking for 'a card', 'two cards', 'show me loading states', or 'show me a table' "
+            "to see Phase 3 progressive component rendering in action!"
         )
         
         words = response_text.split()

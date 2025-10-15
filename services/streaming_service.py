@@ -15,9 +15,10 @@ $$${"type":"SimpleComponent","id":"uuid","data":{...}}$$$
 
 import asyncio
 import json
+import uuid
 import logging
 from typing import AsyncGenerator, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 from config.settings import settings
 from utils.id_generator import generate_uuid7
 from schemas.component_schemas import ComponentData, SimpleComponentData
@@ -230,7 +231,7 @@ def create_simple_component(
         title=title,
         description=description,
         value=value,
-        timestamp=datetime.now().isoformat()
+        timestamp=datetime.now(timezone.utc).isoformat()
     )
 
     # Wrap in ComponentData structure
@@ -588,8 +589,12 @@ def validate_component(component: dict) -> bool:
         if component["type"] not in settings.COMPONENT_TYPES:
             return False
 
-        # Check ID format (basic UUID validation)
-        if not isinstance(component["id"], str) or len(component["id"]) != 36:
+        # Check ID format (robust UUID validation)
+        if not isinstance(component["id"], str):
+            return False
+        try:
+            uuid.UUID(component["id"])
+        except (ValueError, AttributeError):
             return False
 
         # Check data is dict (Phase 2: can be empty {})

@@ -16,7 +16,12 @@ class Settings:
 
     # Application settings
     APP_NAME: str = "StreamForge API"
-    APP_VERSION: str = "0.2.0"  # Phase 1: Component streaming support
+    
+    # Semantic versioning components
+    APP_VERSION_MAJOR: int = 0
+    APP_VERSION_MINOR: int = 2
+    APP_VERSION_PATCH: int = 0
+    APP_VERSION: str = f"{APP_VERSION_MAJOR}.{APP_VERSION_MINOR}.{APP_VERSION_PATCH}"  # Phase 1: Component streaming support
 
     # CORS settings
     CORS_ORIGINS: list = [

@@ -45,6 +45,9 @@ def generate_uuid7() -> str:
     # Remaining bits: random data with proper variant bits
 
     # Extract timestamp bytes (48 bits = 6 bytes)
+    # Convert timestamp to 8 bytes first (minimum size for a full int),
+    # then take only the last 6 bytes [-6:] to fit the UUID7 format
+    # This ensures we have exactly 48 bits (6 bytes) of timestamp data
     timestamp_bytes = timestamp_ms.to_bytes(8, byteorder='big')[-6:]
 
     # Combine timestamp with random data

@@ -8,7 +8,7 @@ React components on the frontend.
 
 from pydantic import BaseModel, Field
 from typing import Any, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class ComponentData(BaseModel):
@@ -55,7 +55,7 @@ class SimpleComponentData(BaseModel):
     description: str = Field(..., description="Component description text")
     value: Optional[int] = Field(None, description="Optional numeric value")
     timestamp: Optional[str] = Field(
-        default_factory=lambda: datetime.now().isoformat(),
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         description="ISO 8601 timestamp"
     )
 
@@ -109,7 +109,7 @@ class TableAComponentData(BaseModel):
     rows: list[list[Any]] = Field(default_factory=list, description="Array of row data arrays")
     total_rows: Optional[int] = Field(None, description="Expected total row count (for progress tracking)")
     timestamp: Optional[str] = Field(
-        default_factory=lambda: datetime.now().isoformat(),
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         description="ISO 8601 timestamp"
     )
 

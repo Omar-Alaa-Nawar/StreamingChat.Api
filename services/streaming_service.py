@@ -17,6 +17,7 @@ import asyncio
 import json
 import uuid
 import logging
+import re
 from typing import AsyncGenerator, Dict
 from datetime import datetime, timezone
 from config.settings import settings
@@ -214,7 +215,7 @@ def validate_component_update(component_id: str, data: dict, active_components: 
 # Phase 3: TableA Helper Functions
 # ============================================================================
 
-def create_empty_table(table_id: str, columns: list[str]) -> dict:
+def create_empty_table(table_id: str, columns: list[str], active_components: Dict[str, dict]) -> dict:
     """
     Create empty table placeholder with columns only (Phase 3).
     
@@ -224,12 +225,13 @@ def create_empty_table(table_id: str, columns: list[str]) -> dict:
     Args:
         table_id: UUID for the table component
         columns: List of column header names
+        active_components: Request-scoped component tracking dictionary
         
     Returns:
         dict: Empty TableA component structure
         
     Example:
-        >>> table = create_empty_table("table-1", ["Name", "Sales", "Region"])
+        >>> table = create_empty_table("table-1", ["Name", "Sales", "Region"], {})
         >>> print(table)
         {
             "type": "TableA",
@@ -249,13 +251,13 @@ def create_empty_table(table_id: str, columns: list[str]) -> dict:
         }
     }
     
-    track_component(table_id, {"columns": columns, "rows": []})
+    track_component(table_id, {"columns": columns, "rows": []}, active_components)
     logger.info(f"Created empty table: {table_id} with columns: {columns}")
     
     return component
 
 
-def create_table_row_update(table_id: str, new_rows: list[list]) -> dict:
+def create_table_row_update(table_id: str, new_rows: list[list], active_components: Dict[str, dict]) -> dict:
     """
     Create a row update for an existing table (Phase 3).
     
@@ -265,12 +267,13 @@ def create_table_row_update(table_id: str, new_rows: list[list]) -> dict:
     Args:
         table_id: UUID for the table component
         new_rows: List of new rows to add (each row is a list of values)
+        active_components: Request-scoped component tracking dictionary
         
     Returns:
         dict: TableA update structure with new rows
         
     Example:
-        >>> update = create_table_row_update("table-1", [["Alice", 123, "US"]])
+        >>> update = create_table_row_update("table-1", [["Alice", 123, "US"]], {})
         >>> print(update)
         {
             "type": "TableA",
@@ -289,7 +292,7 @@ def create_table_row_update(table_id: str, new_rows: list[list]) -> dict:
     }
     
     # Merge with existing state
-    existing_data = get_component_state(table_id)
+    existing_data = get_component_state(table_id, active_components)
     existing_rows = existing_data.get("rows", [])
     merged_rows = existing_rows + new_rows
     
@@ -297,7 +300,7 @@ def create_table_row_update(table_id: str, new_rows: list[list]) -> dict:
         **existing_data,
         "rows": merged_rows
     }
-    track_component(table_id, merged_data)
+    track_component(table_id, merged_data, active_components)
     
     logger.info(f"Added {len(new_rows)} row(s) to table {table_id}. Total rows: {len(merged_rows)}")
     
@@ -308,7 +311,8 @@ def create_filled_table(
     table_id: str,
     columns: list[str],
     rows: list[list],
-    total_rows: int = None
+    total_rows: int = None,
+    active_components: Dict[str, dict] = None
 ) -> dict:
     """
     Create complete table with all data (Phase 3).
@@ -321,6 +325,7 @@ def create_filled_table(
         columns: List of column header names
         rows: List of all rows (each row is a list of values)
         total_rows: Optional total row count for progress tracking
+        active_components: Request-scoped component tracking dictionary (optional for backwards compatibility)
         
     Returns:
         dict: Complete TableA component structure
@@ -348,7 +353,8 @@ def create_filled_table(
         "data": data
     }
     
-    track_component(table_id, data)
+    if active_components is not None:
+        track_component(table_id, data, active_components)
     logger.info(f"Created filled table: {table_id} with {len(rows)} rows")
     
     return component
@@ -679,14 +685,14 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         logger.info(f"Completed incremental updates for: {component_id}")
     
     # Pattern 4: TableA with progressive row streaming (Phase 3)
-    elif "table" in user_message_lower or "sales" in user_message_lower or "users" in user_message_lower or "products" in user_message_lower:
+    elif re.search(r'\b(table|sales|users?|products?)\b', user_message_lower):
         logger.info("Pattern: TableA with progressive row streaming")
         
         # Determine table type from message
         table_type = "sales"  # default
-        if "users" in user_message_lower or "user" in user_message_lower:
+        if re.search(r'\busers?\b', user_message_lower):
             table_type = "users"
-        elif "products" in user_message_lower or "product" in user_message_lower:
+        elif re.search(r'\bproducts?\b', user_message_lower):
             table_type = "products"
         
         # Get columns for this table type
@@ -723,7 +729,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         
         # Stage 1: Send empty table with columns only
         table_id = generate_uuid7()
-        empty_table = create_empty_table(table_id, columns)
+        empty_table = create_empty_table(table_id, columns, active_components)
         component_json = json.dumps(empty_table, separators=(',', ':'))
         yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
         await asyncio.sleep(settings.STREAM_DELAY)
@@ -746,7 +752,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         # Stage 3: Stream rows progressively
         for i, row in enumerate(sample_rows):
             # Send one row at a time
-            row_update = create_table_row_update(table_id, [row])
+            row_update = create_table_row_update(table_id, [row], active_components)
             component_json = json.dumps(row_update, separators=(',', ':'))
             yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
             

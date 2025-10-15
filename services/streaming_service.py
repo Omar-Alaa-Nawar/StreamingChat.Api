@@ -428,14 +428,14 @@ def create_empty_chart(
     return component
 
 
-def create_chart_data_update(
+def create_cumulative_chart_update(
     chart_id: str,
     new_values: list[float],
     series_label: str,
     active_components: Dict[str, dict]
 ) -> dict:
     """
-    Append data points to an existing chart series (Phase 4).
+    Append data points to an existing chart series with cumulative values (Phase 4).
     
     This adds new data points to an existing ChartComponent series.
     Backend MERGES values and sends CUMULATIVE array (not just new values).
@@ -454,10 +454,10 @@ def create_chart_data_update(
         
     Example:
         >>> # Initial state: []
-        >>> update1 = create_chart_data_update("chart-1", [1000], "Sales", {})
+        >>> update1 = create_cumulative_chart_update("chart-1", [1000], "Sales", {})
         >>> # Returns: {"series": [{"label": "Sales", "values": [1000]}]}
         >>> 
-        >>> update2 = create_chart_data_update("chart-1", [1200], "Sales", {})
+        >>> update2 = create_cumulative_chart_update("chart-1", [1200], "Sales", {})
         >>> # Returns: {"series": [{"label": "Sales", "values": [1000, 1200]}]}  ← CUMULATIVE!
     """
     # Merge with existing state

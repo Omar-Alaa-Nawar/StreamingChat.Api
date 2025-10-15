@@ -7,7 +7,7 @@ React components on the frontend.
 """
 
 from pydantic import BaseModel, Field
-from typing import Any, Dict, Optional, Literal
+from typing import Any, Optional, Literal
 from datetime import datetime, timezone
 
 
@@ -25,7 +25,7 @@ class ComponentData(BaseModel):
     """
     type: str = Field(..., description="Component type identifier")
     id: str = Field(..., description="Unique UUID7 identifier")
-    data: Dict[str, Any] = Field(..., description="Component-specific data payload")
+    data: dict[str, Any] = Field(..., description="Component-specific data payload")
 
     class Config:
         json_schema_extra = {

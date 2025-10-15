@@ -16,7 +16,7 @@ class Settings:
 
     # Application settings
     APP_NAME: str = "StreamForge API"
-    APP_VERSION: str = "0.4.0"  # Phase 4: Chart component support
+    APP_VERSION: str = "0.5.2"  # Phase 5.2: Multi-card (delayed SimpleComponent) support
 
     # CORS settings
     CORS_ORIGINS: list = [
@@ -45,6 +45,7 @@ class Settings:
 
     # Phase 3 settings - TableA component
     MAX_TABLE_ROWS: int = 20  # Maximum rows per table
+    MAX_TABLES_PER_RESPONSE: int = 3  # Phase 5: Maximum tables per response
     TABLE_ROW_DELAY: float = 0.2  # Delay between row updates in seconds
     TABLE_COLUMNS_PRESET: dict = {
         "sales": ["Name", "Sales", "Region"],
@@ -54,6 +55,7 @@ class Settings:
 
     # Phase 4 settings - Chart component
     MAX_CHART_POINTS: int = 50  # Maximum data points per chart
+    MAX_CHARTS_PER_RESPONSE: int = 3  # Phase 5: Maximum charts per response
     CHART_POINT_DELAY: float = 0.2  # Delay between data point updates in seconds
     CHART_TYPES_PRESET: dict = {
         "sales_line": {

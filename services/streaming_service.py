@@ -729,8 +729,9 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     user_message_lower = user_message.lower()
 
     # Pattern 0: Partial progressive update (Phase 2.1 Fix)
-    # Triggered by "delayed card" or "partial card"
-    if ("delayed" in user_message_lower or "partial" in user_message_lower) and "card" in user_message_lower:
+    # Triggered by "delayed card" or "partial card" (singular only, not multiple)
+    if (("delayed" in user_message_lower or "partial" in user_message_lower) and "card" in user_message_lower and
+        not any(kw in user_message_lower for kw in ["two", "2", "three", "3", "four", "4", "five", "5", "multiple", "several"])):
         async for chunk in generate_card_with_delay(active_components):
             yield chunk
         return
@@ -777,9 +778,97 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         
         logger.info(f"Completed single component: {component_id}")
     
-    # Pattern 2: Multiple components with progressive updates
-    elif any(kw in user_message_lower for kw in ["two", "2", "three", "3", "multiple", "several"]):
-        logger.info("Pattern: Multiple components with progressive updates")
+    # Pattern 2: Multi-SimpleComponent with DELAYED updates (Phase 5.2)
+    # Triggered ONLY by "delayed cards" with count (e.g., "two delayed cards")
+    elif (("delayed" in user_message_lower or "partial" in user_message_lower) and 
+          re.search(r'\b(cards?|components?)\b', user_message_lower) and
+          any(kw in user_message_lower for kw in ["two", "2", "three", "3", "four", "4", "five", "5", "multiple", "several"])):
+        logger.info("Pattern: Progressive SimpleComponent (multi-card support with delayed updates)")
+        
+        # Determine number of delayed cards to create
+        num_cards = 2  # Default for "two", "multiple", "several"
+        if "three" in user_message_lower or "3" in user_message_lower:
+            num_cards = 3
+        elif "four" in user_message_lower or "4" in user_message_lower:
+            num_cards = 4
+        elif "five" in user_message_lower or "5" in user_message_lower:
+            num_cards = 5
+        
+        # Limit to max
+        num_cards = min(num_cards, getattr(settings, "MAX_COMPONENTS_PER_RESPONSE", 5))
+        
+        # Stage 1: Send all cards with initial data (title + date + description "loading...")
+        cards = []
+        for i in range(num_cards):
+            cid = generate_uuid7()
+            cards.append(cid)
+            
+            initial_data = {
+                "title": f"Delayed Card #{i+1}",
+                "date": datetime.now().isoformat(),
+                "description": "Generating units... please wait."
+            }
+            
+            initial_component = {
+                "type": "SimpleComponent",
+                "id": cid,
+                "data": initial_data
+            }
+            
+            track_component(cid, initial_data, active_components)
+            component_json = json.dumps(initial_component, separators=(',', ':'))
+            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+            await asyncio.sleep(0.05)  # Quick succession
+            
+            logger.info(f"Sent initial delayed card with title+date+description: {cid}")
+        
+        # Stage 2: Simulate delay (data loading/processing)
+        delay_seconds = 3.0  # 3 seconds for multiple cards (faster than single card's 5s)
+        yield f"\nProcessing {num_cards} delayed card{'s' if num_cards > 1 else ''}".encode("utf-8")
+        
+        if settings.SIMULATE_PROCESSING_TIME:
+            for i in range(3):
+                yield ".".encode("utf-8")
+                await asyncio.sleep(1.0)  # Total 3 seconds
+        else:
+            await asyncio.sleep(delay_seconds)
+        
+        yield "\n".encode("utf-8")
+        logger.info(f"Delay completed for all {num_cards} cards")
+        
+        # Stage 3: Send partial updates with units for all cards (interleaved)
+        for idx, cid in enumerate(cards):
+            partial_update = {
+                "type": "SimpleComponent",
+                "id": cid,
+                "data": {
+                    "description": "Units added successfully!",
+                    "units": (idx + 1) * 50  # Different unit values per card
+                }
+            }
+            
+            # Update tracked state (merge with existing)
+            existing_data = get_component_state(cid, active_components)
+            merged_data = {**existing_data, **partial_update["data"]}
+            track_component(cid, merged_data, active_components)
+            
+            component_json = json.dumps(partial_update, separators=(',', ':'))
+            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+            await asyncio.sleep(0.1)
+            
+            logger.info(f"Sent partial update (description+units) for card: {cid}")
+        
+        # Stage 4: Completion message
+        yield f"\n✓ All {num_cards} delayed card{'s' if num_cards > 1 else ''} completed!\n".encode("utf-8")
+        
+        logger.info(f"Completed {num_cards} progressive delayed cards with partial updates")
+    
+    # Pattern 2b: Multi-SimpleComponent (Normal cards without delay) - Legacy behavior
+    # NOTE: Exclude table/chart keywords to avoid conflicts with Patterns 4 & 5
+    elif (re.search(r'\b(cards?|components?)\b', user_message_lower) or 
+          (any(kw in user_message_lower for kw in ["two", "2", "three", "3", "multiple", "several"]) and
+           not re.search(r'\b(tables?|charts?|sales|users?|products?|lines?|bars?|graphs?|plots?|trends?|revenue|growth|performance|metrics?)\b', user_message_lower))):
+        logger.info("Pattern: Multiple components with progressive updates (normal cards)")
         
         # Determine number of components
         num_components = 2
@@ -882,59 +971,110 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         
         logger.info(f"Completed incremental updates for: {component_id}")
     
-    # Pattern 4: TableA with progressive row streaming (Phase 3)
-    elif re.search(r'\b(table|sales|users?|products?)\b', user_message_lower):
-        logger.info("Pattern: TableA with progressive row streaming")
+    # Pattern 4: TableA with progressive row streaming (Phase 3 + Phase 5 Multi-Table Support)
+    elif re.search(r'\b(tables?|sales|users?|products?)\b', user_message_lower):
+        logger.info("Pattern: TableA with progressive row streaming (multi-table support)")
         
-        # Determine table type from message
-        table_type = "sales"  # default
+        # Determine number of tables (default: 1)
+        num_tables = 1
+        table_types = []
+        
+        # Check for multiple table keywords
+        if any(kw in user_message_lower for kw in ["two", "2", "multiple", "several"]):
+            num_tables = 2
+        elif "three" in user_message_lower or "3" in user_message_lower:
+            num_tables = 3
+        
+        # Detect specific table types mentioned
+        if re.search(r'\bsales?\b', user_message_lower):
+            table_types.append("sales")
         if re.search(r'\busers?\b', user_message_lower):
-            table_type = "users"
-        elif re.search(r'\bproducts?\b', user_message_lower):
-            table_type = "products"
+            table_types.append("users")
+        if re.search(r'\bproducts?\b', user_message_lower):
+            table_types.append("products")
         
-        # Get columns for this table type
-        columns = settings.TABLE_COLUMNS_PRESET.get(table_type, ["Column 1", "Column 2", "Column 3"])
+        # If no specific types mentioned, use default
+        if not table_types:
+            table_types = ["sales"]
         
-        # Generate sample data based on table type
-        if table_type == "sales":
-            sample_rows = [
-                ["Alice Johnson", 12500, "North America"],
-                ["Bob Smith", 23400, "Europe"],
-                ["Carlos Rodriguez", 34500, "Latin America"],
-                ["Diana Chen", 18900, "Asia Pacific"],
-                ["Ethan Brown", 29200, "North America"]
-            ]
-        elif table_type == "users":
-            sample_rows = [
-                ["alice_j", "alice@example.com", "Admin", "Active"],
-                ["bob_smith", "bob@example.com", "User", "Active"],
-                ["carlos_r", "carlos@example.com", "Manager", "Active"],
-                ["diana_c", "diana@example.com", "User", "Inactive"],
-                ["ethan_b", "ethan@example.com", "User", "Active"]
-            ]
-        else:  # products
-            sample_rows = [
-                ["Laptop Pro", "Electronics", 1299.99, 45],
-                ["Desk Chair", "Furniture", 249.99, 120],
-                ["Coffee Maker", "Appliances", 89.99, 78],
-                ["Monitor 27\"", "Electronics", 399.99, 32],
-                ["Standing Desk", "Furniture", 549.99, 15]
-            ]
+        # Detect if user wants multiple of the same type (Phase 5.1)
+        same_type_requested = (num_tables > 1 and len(table_types) == 1)
         
-        # Limit rows based on settings
-        sample_rows = sample_rows[:settings.MAX_TABLE_ROWS]
+        # If user explicitly said e.g. "two sales tables" or "three users tables"
+        if same_type_requested:
+            table_types = table_types * num_tables  # duplicate same type
+        # Else fallback to mixed types as before
+        elif num_tables > len(table_types):
+            all_types = ["sales", "users", "products"]
+            for t in all_types:
+                if t not in table_types:
+                    table_types.append(t)
+                    if len(table_types) >= num_tables:
+                        break
         
-        # Stage 1: Send empty table with columns only
-        table_id = generate_uuid7()
-        empty_table = create_empty_table(table_id, columns, active_components)
-        component_json = json.dumps(empty_table, separators=(',', ':'))
-        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
-        await asyncio.sleep(settings.STREAM_DELAY)
+        # Limit to requested number
+        table_types = table_types[:num_tables]
+        num_tables = len(table_types)
+        
+        # Limit to max setting
+        num_tables = min(num_tables, getattr(settings, 'MAX_TABLES_PER_RESPONSE', 3))
+        table_types = table_types[:num_tables]
+        
+        # Prepare all tables data
+        tables_data = []
+        for table_type in table_types:
+            columns = settings.TABLE_COLUMNS_PRESET.get(table_type, ["Column 1", "Column 2", "Column 3"])
+            
+            # Generate sample data based on table type
+            if table_type == "sales":
+                sample_rows = [
+                    ["Alice Johnson", 12500, "North America"],
+                    ["Bob Smith", 23400, "Europe"],
+                    ["Carlos Rodriguez", 34500, "Latin America"],
+                    ["Diana Chen", 18900, "Asia Pacific"],
+                    ["Ethan Brown", 29200, "North America"]
+                ]
+            elif table_type == "users":
+                sample_rows = [
+                    ["alice_j", "alice@example.com", "Admin", "Active"],
+                    ["bob_smith", "bob@example.com", "User", "Active"],
+                    ["carlos_r", "carlos@example.com", "Manager", "Active"],
+                    ["diana_c", "diana@example.com", "User", "Inactive"],
+                    ["ethan_b", "ethan@example.com", "User", "Active"]
+                ]
+            else:  # products
+                sample_rows = [
+                    ["Laptop Pro", "Electronics", 1299.99, 45],
+                    ["Desk Chair", "Furniture", 249.99, 120],
+                    ["Coffee Maker", "Appliances", 89.99, 78],
+                    ["Monitor 27\"", "Electronics", 399.99, 32],
+                    ["Standing Desk", "Furniture", 549.99, 15]
+                ]
+            
+            # Limit rows based on settings
+            sample_rows = sample_rows[:settings.MAX_TABLE_ROWS]
+            
+            tables_data.append({
+                "type": table_type,
+                "columns": columns,
+                "rows": sample_rows,
+                "id": generate_uuid7()
+            })
+        
+        # Stage 1: Send all empty tables first
+        for table_info in tables_data:
+            empty_table = create_empty_table(table_info["id"], table_info["columns"], active_components)
+            component_json = json.dumps(empty_table, separators=(',', ':'))
+            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+            await asyncio.sleep(0.1)  # Quick succession for skeletons
         
         # Stage 2: Stream text while "loading"
         yield "\n".encode("utf-8")
-        loading_text = f"Here's your {table_type} table. Loading data"
+        if num_tables == 1:
+            loading_text = f"Here's your {table_types[0]} table. Loading data"
+        else:
+            loading_text = f"Loading data for all {num_tables} tables"
+        
         for word in loading_text.split():
             yield f"{word} ".encode("utf-8")
             await asyncio.sleep(settings.STREAM_DELAY)
@@ -947,71 +1087,143 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         
         yield "\n".encode("utf-8")
         
-        # Stage 3: Stream rows progressively
-        for i, row in enumerate(sample_rows):
-            # Send one row at a time
-            row_update = create_table_row_update(table_id, [row], active_components)
-            component_json = json.dumps(row_update, separators=(',', ':'))
-            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
-            
-            # Add delay between rows for progressive effect
-            await asyncio.sleep(settings.TABLE_ROW_DELAY)
+        # Stage 3: Stream rows progressively for each table (interleaved for multi-table)
+        max_rows = max(len(t["rows"]) for t in tables_data)
+        
+        for row_idx in range(max_rows):
+            for table_info in tables_data:
+                if row_idx < len(table_info["rows"]):
+                    row = table_info["rows"][row_idx]
+                    row_update = create_table_row_update(table_info["id"], [row], active_components)
+                    component_json = json.dumps(row_update, separators=(',', ':'))
+                    yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+                    
+                    # Add delay between rows for progressive effect
+                    await asyncio.sleep(settings.TABLE_ROW_DELAY)
             
             # Optional: Stream progress text every few rows
-            if (i + 1) % 2 == 0 and i < len(sample_rows) - 1:
-                yield f"Loaded {i + 1} rows... ".encode("utf-8")
+            if (row_idx + 1) % 2 == 0 and row_idx < max_rows - 1:
+                yield f"Loaded {row_idx + 1} rows... ".encode("utf-8")
         
         # Stage 4: Completion message
-        yield f"\n✓ All {len(sample_rows)} rows loaded successfully!".encode("utf-8")
+        total_rows = sum(len(t["rows"]) for t in tables_data)
+        if num_tables == 1:
+            yield f"\n✓ All {len(tables_data[0]['rows'])} rows loaded successfully!".encode("utf-8")
+        else:
+            yield f"\n✓ All {num_tables} tables loaded with {total_rows} total rows!".encode("utf-8")
         
-        logger.info(f"Completed TableA streaming: {table_id} with {len(sample_rows)} rows")
+        for table_info in tables_data:
+            logger.info(f"Completed TableA streaming: {table_info['id']} ({table_info['type']}) with {len(table_info['rows'])} rows")
     
-    # Pattern 5: ChartComponent with progressive data streaming (Phase 4)
-    elif re.search(r'\b(chart|line|bar|graph|plot|trend|revenue|growth|performance|metric)\b', user_message_lower):
-        logger.info("Pattern: ChartComponent with progressive data streaming")
+    # Pattern 5: ChartComponent with progressive data streaming (Phase 4 + Phase 5 Multi-Chart Support)
+    elif re.search(r'\b(charts?|lines?|bars?|graphs?|plots?|trends?|revenue|growth|performance|metrics?)\b', user_message_lower):
+        logger.info("Pattern: ChartComponent with progressive data streaming (multi-chart support)")
         
-        # Determine chart type and preset from message
-        chart_type = "line"  # default
-        chart_preset = "sales_line"  # default
+        # Determine number of charts (default: 1)
+        num_charts = 1
+        chart_presets = []
         
-        # Detect chart type from keywords
-        if re.search(r'\bbar\b', user_message_lower):
-            chart_type = "bar"
-            chart_preset = "revenue_bar"
-        elif re.search(r'\b(revenue|performance)\b', user_message_lower):
-            chart_type = "bar"
-            chart_preset = "performance_bar" if "performance" in user_message_lower else "revenue_bar"
-        elif re.search(r'\bgrowth\b', user_message_lower):
-            chart_type = "line"
-            chart_preset = "growth_line"
+        # Check for multiple chart keywords
+        if any(kw in user_message_lower for kw in ["two", "2", "multiple", "several"]):
+            num_charts = 2
+        elif "three" in user_message_lower or "3" in user_message_lower:
+            num_charts = 3
         
-        # Get preset chart data
-        preset_data = settings.CHART_TYPES_PRESET.get(chart_preset, {
-            "chart_type": "line",
-            "title": "Sample Chart",
-            "x_axis": ["A", "B", "C"],
-            "series": [{"label": "Data", "values": [10, 20, 30]}]
-        })
+        # Detect specific chart presets mentioned
+        if re.search(r'\b(bar|revenue|performance)\b', user_message_lower):
+            if "revenue" in user_message_lower:
+                chart_presets.append("revenue_bar")
+            if "performance" in user_message_lower:
+                chart_presets.append("performance_bar")
+            if "bar" in user_message_lower and not chart_presets:
+                chart_presets.append("revenue_bar")
         
-        title = preset_data["title"]
-        x_axis = preset_data["x_axis"]
-        series_data = preset_data["series"][0]  # Get first series
-        series_label = series_data["label"]
-        all_values = series_data["values"]
+        if re.search(r'\b(line|trend|growth|sales)\b', user_message_lower):
+            if "growth" in user_message_lower:
+                chart_presets.append("growth_line")
+            if "sales" in user_message_lower:
+                chart_presets.append("sales_line")
+            if ("line" in user_message_lower or "trend" in user_message_lower) and not chart_presets:
+                chart_presets.append("sales_line")
         
-        # Limit points based on settings
-        all_values = all_values[:settings.MAX_CHART_POINTS]
+        # If no specific presets mentioned, use default
+        if not chart_presets:
+            chart_presets = ["sales_line"]
         
-        # Stage 1: Send empty chart with metadata only
-        chart_id = generate_uuid7()
-        empty_chart = create_empty_chart(chart_id, chart_type, title, x_axis, active_components)
-        component_json = json.dumps(empty_chart, separators=(',', ':'))
-        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
-        await asyncio.sleep(settings.STREAM_DELAY)
+        # Detect if user wants multiple of the same type (Phase 5.1)
+        same_type_requested = (num_charts > 1 and len(chart_presets) == 1)
+        
+        # If user explicitly said e.g. "two line charts" or "three bar charts"
+        if same_type_requested:
+            chart_presets = chart_presets * num_charts  # duplicate same preset
+        # Else fallback to mixed as before
+        elif num_charts > len(chart_presets):
+            all_presets = ["sales_line", "revenue_bar", "growth_line", "performance_bar"]
+            for preset in all_presets:
+                if preset not in chart_presets:
+                    chart_presets.append(preset)
+                    if len(chart_presets) >= num_charts:
+                        break
+        
+        # Limit to requested number
+        chart_presets = chart_presets[:num_charts]
+        num_charts = len(chart_presets)
+        
+        # Limit to max setting
+        num_charts = min(num_charts, getattr(settings, 'MAX_CHARTS_PER_RESPONSE', 3))
+        chart_presets = chart_presets[:num_charts]
+        
+        # Prepare all charts data
+        charts_data = []
+        for chart_preset in chart_presets:
+            # Get preset chart data
+            preset_data = settings.CHART_TYPES_PRESET.get(chart_preset, {
+                "chart_type": "line",
+                "title": "Sample Chart",
+                "x_axis": ["A", "B", "C"],
+                "series": [{"label": "Data", "values": [10, 20, 30]}]
+            })
+            
+            chart_type = preset_data["chart_type"]
+            title = preset_data["title"]
+            x_axis = preset_data["x_axis"]
+            series_data = preset_data["series"][0]  # Get first series
+            series_label = series_data["label"]
+            all_values = series_data["values"]
+            
+            # Limit points based on settings
+            all_values = all_values[:settings.MAX_CHART_POINTS]
+            
+            charts_data.append({
+                "preset": chart_preset,
+                "chart_type": chart_type,
+                "title": title,
+                "x_axis": x_axis,
+                "series_label": series_label,
+                "values": all_values,
+                "id": generate_uuid7()
+            })
+        
+        # Stage 1: Send all empty charts first
+        for chart_info in charts_data:
+            empty_chart = create_empty_chart(
+                chart_info["id"],
+                chart_info["chart_type"],
+                chart_info["title"],
+                chart_info["x_axis"],
+                active_components
+            )
+            component_json = json.dumps(empty_chart, separators=(',', ':'))
+            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+            await asyncio.sleep(0.1)  # Quick succession for skeletons
         
         # Stage 2: Stream text while "loading"
         yield "\n".encode("utf-8")
-        loading_text = f"Generating {chart_type} chart"
+        if num_charts == 1:
+            loading_text = f"Generating {charts_data[0]['chart_type']} chart"
+        else:
+            loading_text = f"Generating all {num_charts} charts"
+        
         for word in loading_text.split():
             yield f"{word} ".encode("utf-8")
             await asyncio.sleep(settings.STREAM_DELAY)
@@ -1024,24 +1236,38 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         
         yield "\n".encode("utf-8")
         
-        # Stage 3: Stream data points progressively
-        for i, value in enumerate(all_values):
-            # Send one data point at a time
-            data_update = create_chart_data_update(chart_id, [value], series_label, active_components)
-            component_json = json.dumps(data_update, separators=(',', ':'))
-            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
-            
-            # Add delay between points for progressive effect
-            await asyncio.sleep(settings.CHART_POINT_DELAY)
+        # Stage 3: Stream data points progressively for each chart (interleaved for multi-chart)
+        max_points = max(len(c["values"]) for c in charts_data)
+        
+        for point_idx in range(max_points):
+            for chart_info in charts_data:
+                if point_idx < len(chart_info["values"]):
+                    value = chart_info["values"][point_idx]
+                    data_update = create_chart_data_update(
+                        chart_info["id"],
+                        [value],
+                        chart_info["series_label"],
+                        active_components
+                    )
+                    component_json = json.dumps(data_update, separators=(',', ':'))
+                    yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+                    
+                    # Add delay between points for progressive effect
+                    await asyncio.sleep(settings.CHART_POINT_DELAY)
             
             # Optional: Stream progress text every few points
-            if (i + 1) % 2 == 0 and i < len(all_values) - 1:
-                yield f"Loaded {i + 1}/{len(all_values)} points... ".encode("utf-8")
+            if (point_idx + 1) % 2 == 0 and point_idx < max_points - 1:
+                yield f"Loaded {point_idx + 1}/{max_points} points... ".encode("utf-8")
         
         # Stage 4: Completion message
-        yield f"\n✓ Chart completed with {len(all_values)} data points!".encode("utf-8")
+        total_points = sum(len(c["values"]) for c in charts_data)
+        if num_charts == 1:
+            yield f"\n✓ Chart completed with {len(charts_data[0]['values'])} data points!".encode("utf-8")
+        else:
+            yield f"\n✓ All {num_charts} charts completed with {total_points} total data points!".encode("utf-8")
         
-        logger.info(f"Completed ChartComponent streaming: {chart_id} ({chart_type}) with {len(all_values)} points")
+        for chart_info in charts_data:
+            logger.info(f"Completed ChartComponent streaming: {chart_info['id']} ({chart_info['chart_type']}) with {len(chart_info['values'])} points")
     
     # Pattern 6: Default text-only response
     else:

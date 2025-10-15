@@ -16,7 +16,8 @@ class Settings:
 
     # Application settings
     APP_NAME: str = "StreamForge API"
-    APP_VERSION: str = "0.4.0"  # Phase 4: Chart component support
+    CURRENT_PHASE: int = 4  # Current development phase
+    APP_VERSION: str = "0.4.0"  # Chart component support (see CURRENT_PHASE)
 
     # CORS settings
     CORS_ORIGINS: list = [

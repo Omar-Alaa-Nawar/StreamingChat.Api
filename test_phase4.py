@@ -28,14 +28,14 @@ import requests
 import json
 import re
 import sys
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Any
 
 # Configuration
 API_URL = "http://127.0.0.1:8001/chat"
 DELIMITER = "$$$"
 
 
-def extract_components(response_text: str) -> List[Dict]:
+def extract_components(response_text: str) -> List[Dict[str, Any]]:
     """
     Extract all component JSON objects from streaming response.
     
@@ -63,7 +63,7 @@ def extract_components(response_text: str) -> List[Dict]:
     return components
 
 
-def merge_chart_components(components: List[Dict]) -> Dict[str, Dict]:
+def merge_chart_components(components: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """
     Merge chart component updates by ID (simulates frontend behavior).
     

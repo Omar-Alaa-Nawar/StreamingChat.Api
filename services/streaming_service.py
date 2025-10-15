@@ -2,20 +2,213 @@
 Streaming service for handling real-time text and component streaming.
 
 This service provides the core streaming functionality for the StreamForge backend.
-Phase 1: Streams both text and JSON components using Server-Sent Events (SSE).
 
-Components are wrapped with $$ delimiters:
-$${"type":"SimpleComponent","id":"uuid","data":{...}}$$
+Phase 2: Progressive component rendering with multiple component support.
+- Stream components in stages: empty → text → data update
+- Support multiple components (1-5) per response
+- Components identified by UUID for update matching
+- Backwards compatible with Phase 1
+
+Components are wrapped with $$$ delimiters:
+$$${"type":"SimpleComponent","id":"uuid","data":{...}}$$$
 """
 
 import asyncio
 import json
 import uuid
-from typing import AsyncGenerator
+import logging
+from typing import AsyncGenerator, Dict
 from datetime import datetime, timezone
 from config.settings import settings
 from utils.id_generator import generate_uuid7
 from schemas.component_schemas import ComponentData, SimpleComponentData
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def track_component(component_id: str, data: dict, active_components: Dict[str, dict]):
+    """
+    Track component state during streaming.
+    
+    Args:
+        component_id: UUID of the component
+        data: Current data state of the component
+        active_components: Request-scoped component tracking dictionary
+    """
+    active_components[component_id] = data
+    logger.info(f"Tracking component: {component_id}")
+
+
+def get_component_state(component_id: str, active_components: Dict[str, dict]) -> dict:
+    """
+    Get current state of tracked component.
+    
+    Args:
+        component_id: UUID of the component
+        active_components: Request-scoped component tracking dictionary
+        
+    Returns:
+        dict: Component data or empty dict if not found
+    """
+    return active_components.get(component_id, {})
+
+
+def create_empty_component(component_id: str, active_components: Dict[str, dict]) -> dict:
+    """
+    Create empty component placeholder (Phase 2).
+    
+    This creates a component with no data, used to render
+    an immediate placeholder in the frontend.
+    
+    Args:
+        component_id: UUID for the component
+        active_components: Request-scoped component tracking dictionary
+        
+    Returns:
+        dict: Empty component structure
+        
+    Example:
+        >>> comp = create_empty_component("abc-123", {})
+        >>> print(comp)
+        {
+            "type": "SimpleComponent",
+            "id": "abc-123",
+            "data": {}
+        }
+    """
+    component = {
+        "type": "SimpleComponent",
+        "id": component_id,
+        "data": {}
+    }
+    
+    track_component(component_id, {}, active_components)
+    logger.info(f"Created empty component: {component_id}")
+    
+    return component
+
+
+def create_filled_component(
+    component_id: str,
+    title: str,
+    description: str,
+    value: int,
+    active_components: Dict[str, dict]
+) -> dict:
+    """
+    Create component with full data (Phase 2).
+    
+    This populates a component with actual data, used to update
+    a previously created empty component.
+    
+    Args:
+        component_id: UUID for the component (should match empty component)
+        title: Component title
+        description: Component description
+        value: Numeric value
+        active_components: Request-scoped component tracking dictionary
+        
+    Returns:
+        dict: Filled component structure
+        
+    Example:
+        >>> comp = create_filled_component("abc-123", "Card", "Data loaded", 100, {})
+        >>> print(comp)
+        {
+            "type": "SimpleComponent",
+            "id": "abc-123",
+            "data": {
+                "title": "Card",
+                "description": "Data loaded",
+                "value": 100,
+                "timestamp": "2025-10-14T13:30:00.123456"
+            }
+        }
+    """
+    data = {
+        "title": title,
+        "description": description,
+        "value": value,
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    component = {
+        "type": "SimpleComponent",
+        "id": component_id,
+        "data": data
+    }
+    
+    track_component(component_id, data, active_components)
+    logger.info(f"Filled component: {component_id} with data: {data}")
+    
+    return component
+
+
+def create_partial_update(component_id: str, data: dict, active_components: Dict[str, dict]) -> dict:
+    """
+    Create partial data update for existing component (Phase 2).
+    
+    This allows incremental updates to a component's data.
+    
+    Args:
+        component_id: UUID for the component
+        data: Partial data to update
+        active_components: Request-scoped component tracking dictionary
+        
+    Returns:
+        dict: Component update structure
+        
+    Example:
+        >>> update = create_partial_update("abc-123", {"title": "Loading..."}, {})
+        >>> print(update)
+        {
+            "type": "SimpleComponent",
+            "id": "abc-123",
+            "data": {"title": "Loading..."}
+        }
+    """
+    component = {
+        "type": "SimpleComponent",
+        "id": component_id,
+        "data": data
+    }
+    
+    # Merge with existing state
+    existing_data = get_component_state(component_id, active_components)
+    merged_data = {**existing_data, **data}
+    track_component(component_id, merged_data, active_components)
+    
+    logger.info(f"Partial update for component {component_id}: {data}")
+    
+    return component
+
+
+def validate_component_update(component_id: str, data: dict, active_components: Dict[str, dict]) -> bool:
+    """
+    Validate component update before sending (Phase 2).
+    
+    Args:
+        component_id: UUID of the component
+        data: Data to validate
+        active_components: Request-scoped component tracking dictionary
+        
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    # Check if component was initialized
+    if component_id not in active_components:
+        logger.warning(f"Update for unknown component: {component_id}")
+        return False
+    
+    # Validate data structure
+    if not isinstance(data, dict):
+        logger.error(f"Invalid data type for component {component_id}")
+        return False
+    
+    return True
+
 
 
 def create_simple_component(
@@ -24,7 +217,10 @@ def create_simple_component(
     value: int = 100
 ) -> dict:
     """
-    Create a SimpleComponent with fake data.
+    Create a SimpleComponent with data (Legacy - Phase 1).
+    
+    DEPRECATED: Use create_filled_component() for Phase 2.
+    Kept for backwards compatibility. This function will be removed in version 3.0 (expected Q1 2026).
 
     Args:
         title: Component title/heading
@@ -33,20 +229,6 @@ def create_simple_component(
 
     Returns:
         dict: Component data structure ready for streaming
-
-    Example:
-        >>> component = create_simple_component("Test", "Description", 42)
-        >>> print(component)
-        {
-            "type": "SimpleComponent",
-            "id": "01932e4f-a4c2-7890-b123-456789abcdef",
-            "data": {
-                "title": "Test",
-                "description": "Description",
-                "value": 42,
-                "timestamp": "2025-10-14T12:34:56.789Z"
-            }
-        }
     """
     # Create component data payload
     component_data = SimpleComponentData(
@@ -66,21 +248,111 @@ def create_simple_component(
     return component.model_dump()
 
 
+async def generate_card_with_delay(active_components: Dict[str, dict]) -> AsyncGenerator[bytes, None]:
+    """
+    Generate a card with partial progressive update (Phase 2.1 Fix).
+    
+    This pattern demonstrates partial → complete progressive updates:
+    1. Creates component with initial data (title + date + description)
+    2. Waits 5 seconds (simulating data fetch/processing)
+    3. Sends partial update with new fields (units + updated description)
+    
+    Flow:
+        Initial Component (title+date+description) → 5s Delay → Partial Update (units+description)
+    
+    Frontend should merge updates:
+        {title, date, description: "loading..."} → {title, date, description: "success!", units}
+    
+    Args:
+        active_components: Request-scoped component tracking dictionary
+    
+    Yields:
+        bytes: UTF-8 encoded chunks (JSON components only)
+    
+    Example Output:
+        1. $$${"type":"SimpleComponent","id":"abc","data":{"title":"Card Title","date":"...","description":"Generating units... please wait."}}$$$
+        2. [5-second pause]
+        3. $$${"type":"SimpleComponent","id":"abc","data":{"description":"Units added successfully!","units":150}}$$$
+    """
+    logger.info("Pattern: Partial progressive update (title+date+description → units+description after 5s)")
+    
+    # Stage 1: Create component with initial data (title + date + description)
+    component_id = generate_uuid7()
+    initial_data = {
+        "title": "Card Title",
+        "date": datetime.now().isoformat(),
+        "description": "Generating units... please wait."
+    }
+    
+    initial_component = {
+        "type": "SimpleComponent",
+        "id": component_id,
+        "data": initial_data
+    }
+    
+    track_component(component_id, initial_data, active_components)
+    component_json = json.dumps(initial_component, separators=(',', ':'))
+    yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+    await asyncio.sleep(0.1)
+    
+    logger.info(f"Sent initial component with title+date+description: {component_id}")
+    
+    # Stage 2: Simulate 5-second delay (data loading/processing)
+    logger.info(f"Starting 5-second delay for component: {component_id}")
+    await asyncio.sleep(5.0)
+    logger.info(f"Delay completed for component: {component_id}")
+    
+    # Stage 3: Send partial update with units and updated description
+    partial_update = {
+        "type": "SimpleComponent",
+        "id": component_id,
+        "data": {
+            "description": "Units added successfully!",
+            "units": 150
+        }
+    }
+    
+    # Update tracked state (merge with existing)
+    existing_data = get_component_state(component_id, active_components)
+    merged_data = {**existing_data, **partial_update["data"]}
+    track_component(component_id, merged_data, active_components)
+    
+    component_json = json.dumps(partial_update, separators=(',', ':'))
+    yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+    await asyncio.sleep(0.1)
+    
+    logger.info(f"Sent partial update (description+units) for component: {component_id}")
+    
+    logger.info(f"Completed partial progressive update for: {component_id}")
+
+
 async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     """
-    Generate streaming response with mixed text and JSON components.
+    Generate streaming response with progressive component updates (Phase 2).
 
-    Phase 1 Implementation:
-    - Analyzes user message to determine if components should be sent
-    - Streams text chunks word-by-word
-    - Streams JSON components wrapped in $$ delimiters
-    - Simulates LLM decision-making for component generation
+    Phase 2 Implementation:
+    - Streams components in stages: empty → text → data
+    - Supports multiple components (1-5) per response
+    - Components matched by ID for updates
+    - Simulates real-world data loading patterns
+
+    Phase 2.1 Fix:
+    - Added delayed card update pattern (5-second delay)
+    - Validates progressive component lifecycle with timing
 
     Flow:
-    1. Check if user requests components (keywords: card, component, show, give)
-    2. Stream appropriate response (text only OR text + components)
-    3. Each component is formatted as: $$<JSON>$$
-    4. Text chunks are sent with trailing spaces
+    1. Detect user intent from message
+    2. Send empty component(s) as placeholder(s)
+    3. Stream explanatory text while "loading"
+    4. Update component(s) with actual data
+    5. Stream completion message
+
+    Supported patterns:
+    - Single component with progressive load
+    - Multiple components with staggered updates
+    - Mixed text and components
+    - Incremental data updates
+    - Delayed card update (5-second delay) - Phase 2.1
 
     Args:
         user_message: The user's input message
@@ -89,143 +361,187 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         bytes: UTF-8 encoded chunks (text or JSON components)
 
     Example Output:
-        For "show me a card":
-        - "Here's " (text)
-        - "a " (text)
-        - "component " (text)
-        - "for " (text)
-        - "you: " (text)
-        - $${"type":"SimpleComponent",...}$$ (component)
-        - " " (text)
-        - "Hope " (text)
-        - "this " (text)
-        - "helps!" (text)
+        User: "show me a card"
+        
+        Stream:
+        1. $$${"type":"SimpleComponent","id":"abc","data":{}}$$$
+        2. "Loading your card..."
+        3. $$${"type":"SimpleComponent","id":"abc","data":{"title":"Card",...}}$$$
+        4. " Done!"
     """
+    # Create request-scoped component tracking dictionary
+    active_components: Dict[str, dict] = {}
+    
     user_message_lower = user_message.lower()
 
-    # Simulate LLM decision-making: Check if user wants components
-    wants_component = any(keyword in user_message_lower for keyword in [
-        "card", "component", "show", "give", "display", "create"
-    ])
-
-    # Check if user wants multiple components
-    wants_multiple = any(keyword in user_message_lower for keyword in [
-        "two", "2", "three", "3", "multiple", "several", "few"
-    ])
-
-    if wants_component:
-        if wants_multiple:
-            # Generate response with multiple components
-            async for chunk in stream_text_with_multiple_components(user_message):
-                yield chunk
-            return
-
-        # Generate response with single component
-        # Stream initial text
-        intro_text = "Here's a component for you: "
-        for word in intro_text.split():
+    # Pattern 0: Partial progressive update (Phase 2.1 Fix)
+    # Triggered by "delayed card" or "partial card"
+    if ("delayed" in user_message_lower or "partial" in user_message_lower) and "card" in user_message_lower:
+        async for chunk in generate_card_with_delay(active_components):
+            yield chunk
+        return
+    
+    # Pattern 1: Single component with progressive loading
+    if "card" in user_message_lower and not any(kw in user_message_lower for kw in ["two", "2", "three", "3", "multiple", "several"]):
+        logger.info("Pattern: Single component with progressive loading")
+        
+        # Stage 1: Send empty component (creates placeholder)
+        component_id = generate_uuid7()
+        empty_component = create_empty_component(component_id, active_components)
+        component_json = json.dumps(empty_component, separators=(',', ':'))
+        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+        await asyncio.sleep(settings.STREAM_DELAY)
+        
+        # Stage 2: Stream text while "processing"
+        loading_text = "Generating your card"
+        for word in loading_text.split():
             yield f"{word} ".encode("utf-8")
             await asyncio.sleep(settings.STREAM_DELAY)
-
-        # Stream JSON component with $$ delimiters
-        component = create_simple_component(
-            title="Sample Card",
-            description="This is a dynamically generated component based on your request",
-            value=100
+        
+        # Simulate processing time
+        if settings.SIMULATE_PROCESSING_TIME:
+            for i in range(3):
+                yield ".".encode("utf-8")
+                await asyncio.sleep(0.3)
+        
+        yield " ".encode("utf-8")
+        
+        # Stage 3: Send component with full data
+        filled_component = create_filled_component(
+            component_id,
+            title="Dynamic Card",
+            description="Data loaded successfully from the backend",
+            value=150,
+            active_components=active_components
         )
-
-        # Format as: $$<JSON>$$
-        component_json = json.dumps(component, separators=(',', ':'))  # Compact JSON
-        component_str = f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}"
-
-        # Stream component character-by-character to trigger skeleton loaders
-        for char in component_str:
-            yield char.encode("utf-8")
-            await asyncio.sleep(0.01)  # 10ms per character = ~100 chars/second (visible streaming)
-
-        # Stream closing text
-        closing_text = " Hope this helps!"
-        for word in closing_text.split():
+        component_json = json.dumps(filled_component, separators=(',', ':'))
+        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+        await asyncio.sleep(settings.STREAM_DELAY)
+        
+        # Stage 4: Completion message
+        yield " All set!".encode("utf-8")
+        
+        logger.info(f"Completed single component: {component_id}")
+    
+    # Pattern 2: Multiple components with progressive updates
+    elif any(kw in user_message_lower for kw in ["two", "2", "three", "3", "multiple", "several"]):
+        logger.info("Pattern: Multiple components with progressive updates")
+        
+        # Determine number of components
+        num_components = 2
+        if "three" in user_message_lower or "3" in user_message_lower:
+            num_components = 3
+        elif "four" in user_message_lower or "4" in user_message_lower:
+            num_components = 4
+        elif "five" in user_message_lower or "5" in user_message_lower:
+            num_components = 5
+        
+        # Limit to max
+        num_components = min(num_components, settings.MAX_COMPONENTS_PER_RESPONSE)
+        
+        # Stage 1: Send all empty components first
+        component_ids = []
+        for i in range(num_components):
+            comp_id = generate_uuid7()
+            component_ids.append(comp_id)
+            
+            empty = create_empty_component(comp_id, active_components)
+            component_json = json.dumps(empty, separators=(',', ':'))
+            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+            await asyncio.sleep(0.1)  # Quick succession
+        
+        # Stage 2: Stream text while "loading"
+        loading_text = f"Loading data for all {num_components} cards"
+        for word in loading_text.split():
             yield f"{word} ".encode("utf-8")
             await asyncio.sleep(settings.STREAM_DELAY)
-
+        
+        # Simulate processing
+        if settings.SIMULATE_PROCESSING_TIME:
+            for i in range(3):
+                yield ".".encode("utf-8")
+                await asyncio.sleep(0.3)
+        
+        yield " ".encode("utf-8")
+        
+        # Stage 3: Update each component with data (staggered)
+        for i, comp_id in enumerate(component_ids):
+            filled = create_filled_component(
+                comp_id,
+                title=f"Card {i+1}",
+                description=f"This is card number {i+1} with unique data",
+                value=(i+1) * 100,
+                active_components=active_components
+            )
+            component_json = json.dumps(filled, separators=(',', ':'))
+            yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+            await asyncio.sleep(settings.COMPONENT_UPDATE_DELAY)
+        
+        # Stage 4: Completion
+        yield " Complete!".encode("utf-8")
+        
+        logger.info(f"Completed {num_components} components")
+    
+    # Pattern 3: Incremental updates (loading states)
+    elif "loading" in user_message_lower or "incremental" in user_message_lower:
+        logger.info("Pattern: Incremental component updates")
+        
+        component_id = generate_uuid7()
+        
+        # Stage 1: Empty component
+        empty = create_empty_component(component_id, active_components)
+        component_json = json.dumps(empty, separators=(',', ':'))
+        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+        await asyncio.sleep(0.2)
+        
+        yield "Watch the card load incrementally... ".encode("utf-8")
+        await asyncio.sleep(0.3)
+        
+        # Stage 2: Update with title only
+        partial1 = create_partial_update(component_id, {"title": "Loading..."}, active_components)
+        component_json = json.dumps(partial1, separators=(',', ':'))
+        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+        await asyncio.sleep(0.5)
+        
+        # Stage 3: Update with title + description
+        partial2 = create_partial_update(component_id, {
+            "title": "Progressive Card",
+            "description": "Description loaded..."
+        }, active_components)
+        component_json = json.dumps(partial2, separators=(',', ':'))
+        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+        await asyncio.sleep(0.5)
+        
+        # Stage 4: Complete data
+        filled = create_filled_component(
+            component_id,
+            title="Progressive Card",
+            description="All data loaded successfully!",
+            value=100,
+            active_components=active_components
+        )
+        component_json = json.dumps(filled, separators=(',', ':'))
+        yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
+        await asyncio.sleep(0.2)
+        
+        yield " Done with incremental loading!".encode("utf-8")
+        
+        logger.info(f"Completed incremental updates for: {component_id}")
+    
+    # Pattern 4: Default text-only response
     else:
-        # No components requested - stream text only (Phase 0 behavior)
+        logger.info("Pattern: Text-only response (no components)")
+        
         response_text = (
-            "This is a simulated streaming response from the LLM. "
-            "Each word appears one at a time. "
-            "Try asking for a 'card' or 'component' to see JSON streaming!"
+            "This is a text-only response. "
+            "Try asking for 'a card', 'two cards', or 'show me loading states' "
+            "to see Phase 2 progressive component rendering in action!"
         )
-
+        
         words = response_text.split()
         for word in words:
             yield f"{word} ".encode("utf-8")
             await asyncio.sleep(settings.STREAM_DELAY)
-
-
-async def stream_text_with_multiple_components(user_message: str) -> AsyncGenerator[bytes, None]:
-    """
-    Generate streaming response with multiple JSON components.
-
-    Used when user explicitly asks for multiple components.
-
-    Args:
-        user_message: The user's input message
-
-    Yields:
-        bytes: UTF-8 encoded chunks with multiple components
-
-    Example:
-        For "give me two components":
-        - Text intro
-        - Component 1
-        - Text middle
-        - Component 2
-        - Text closing
-    """
-    # Stream intro text
-    intro = "Here are your components: "
-    for word in intro.split():
-        yield f"{word} ".encode("utf-8")
-        await asyncio.sleep(settings.STREAM_DELAY)
-
-    # Stream first component character-by-character
-    component1 = create_simple_component(
-        title="First Component",
-        description="This is the first component in the sequence",
-        value=1
-    )
-    component1_json = json.dumps(component1, separators=(',', ':'))
-    component1_str = f"{settings.COMPONENT_DELIMITER}{component1_json}{settings.COMPONENT_DELIMITER}"
-
-    for char in component1_str:
-        yield char.encode("utf-8")
-        await asyncio.sleep(0.01)  # 10ms per character
-
-    # Stream middle text
-    middle = " and here's another one: "
-    for word in middle.split():
-        yield f"{word} ".encode("utf-8")
-        await asyncio.sleep(settings.STREAM_DELAY)
-
-    # Stream second component character-by-character
-    component2 = create_simple_component(
-        title="Second Component",
-        description="This is the second component with different data",
-        value=2
-    )
-    component2_json = json.dumps(component2, separators=(',', ':'))
-    component2_str = f"{settings.COMPONENT_DELIMITER}{component2_json}{settings.COMPONENT_DELIMITER}"
-
-    for char in component2_str:
-        yield char.encode("utf-8")
-        await asyncio.sleep(0.01)  # 10ms per character
-
-    # Stream closing text
-    closing = " Let me know if you need more!"
-    for word in closing.split():
-        yield f"{word} ".encode("utf-8")
-        await asyncio.sleep(settings.STREAM_DELAY)
 
 
 async def generate_llm_stream(user_message: str) -> AsyncGenerator[bytes, None]:
@@ -235,10 +551,11 @@ async def generate_llm_stream(user_message: str) -> AsyncGenerator[bytes, None]:
     This function will be implemented when integrating with LangChain.
     It will invoke the LLM chain and stream the response back to the client.
 
-    Phase 2+ Implementation:
+    Future Implementation:
     - Real LLM will decide when to generate components
     - LLM will provide component parameters
     - Streaming will be based on actual token generation
+    - Progressive component updates will be LLM-driven
 
     Args:
         user_message: The user's input message
@@ -265,7 +582,7 @@ def validate_component(component: dict) -> bool:
     - Has required fields (type, id, data)
     - Type is in allowed list
     - ID is valid UUID7 format
-    - Data is a dictionary
+    - Data is a dictionary (can be empty for Phase 2)
 
     Args:
         component: Component dictionary to validate
@@ -290,7 +607,7 @@ def validate_component(component: dict) -> bool:
         except (ValueError, AttributeError):
             return False
 
-        # Check data is dict
+        # Check data is dict (Phase 2: can be empty {})
         if not isinstance(component["data"], dict):
             return False
 

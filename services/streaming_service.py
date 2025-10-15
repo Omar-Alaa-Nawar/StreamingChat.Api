@@ -443,8 +443,8 @@ def create_cumulative_chart_update(
     This adds new data points to an existing ChartComponent series.
     Backend MERGES values and sends CUMULATIVE array (not just new values).
     
-    IMPORTANT: Like TableA rows, this sends the FULL cumulative array,
-    not just the increment. Frontend replaces the array completely.
+    IMPORTANT: Unlike TableA rows (which only send new rows, with cumulative state tracked internally),
+    ChartComponent updates send the FULL cumulative array, not just the increment. Frontend replaces the array completely.
     
     Args:
         chart_id: UUID for the chart component
@@ -1104,9 +1104,10 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
                     # Add delay between rows for progressive effect
                     await asyncio.sleep(settings.TABLE_ROW_DELAY)
             
-            # Optional: Stream progress text every few rows
+            # Optional: Stream progress text every few rounds (row_idx represents interleaved rounds, not total rows)
             if (row_idx + 1) % 2 == 0 and row_idx < max_rows - 1:
-                yield f"Loaded {row_idx + 1} rows... ".encode("utf-8")
+                total_rows_loaded = sum(min(row_idx + 1, len(t["rows"])) for t in tables_data)
+                yield f"Loaded {total_rows_loaded} rows... ".encode("utf-8")
         
         # Stage 4: Completion message
         total_rows = sum(len(t["rows"]) for t in tables_data)
@@ -1258,9 +1259,9 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
                     # Add delay between points for progressive effect
                     await asyncio.sleep(settings.CHART_POINT_DELAY)
             
-            # Optional: Stream progress text every few points
+            # Optional: Stream progress text every few points (with newlines for clear separation)
             if (point_idx + 1) % 2 == 0 and point_idx < max_points - 1:
-                yield f"Loaded {point_idx + 1}/{max_points} points... ".encode("utf-8")
+                yield f"\nLoaded {point_idx + 1}/{max_points} points...\n".encode("utf-8")
         
         # Stage 4: Completion message
         total_points = sum(len(c["values"]) for c in charts_data)

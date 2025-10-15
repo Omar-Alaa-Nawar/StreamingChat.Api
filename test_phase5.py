@@ -8,11 +8,21 @@ import json
 import re
 
 
-def parse_components(response_text: str) -> list[dict]:
-    """Extract all JSON components from streamed response."""
+def extract_components_from_text(text: str) -> list[dict]:
+    """
+    Extract JSON components from text using the $$$ delimiter pattern.
+    
+    Shared utility for both batch and streaming (incremental) parsing.
+    
+    Args:
+        text: Text containing embedded JSON components with $$$ delimiters
+        
+    Returns:
+        list[dict]: Parsed component dictionaries
+    """
     components = []
     pattern = r'\$\$\$({.*?})\$\$\$'
-    matches = re.findall(pattern, response_text, re.DOTALL)
+    matches = re.findall(pattern, text, re.DOTALL)
     
     for match in matches:
         try:
@@ -22,6 +32,16 @@ def parse_components(response_text: str) -> list[dict]:
             continue
     
     return components
+
+
+def parse_components(response_text: str) -> list[dict]:
+    """
+    Extract all JSON components from complete streamed response.
+    
+    This is a convenience wrapper around extract_components_from_text
+    for batch processing of complete responses.
+    """
+    return extract_components_from_text(response_text)
 
 
 def test_multiple_tables():
@@ -268,6 +288,7 @@ def test_progressive_interleaving():
     
     full_response = ""
     component_sequence = []
+    processed_count = 0  # Track how many components we've already processed
     
     print("\n📡 Streaming Response (tracking component order):\n")
     
@@ -278,22 +299,22 @@ def test_progressive_interleaving():
             full_response += chunk
             temp_buffer += chunk
             
-            # Try to extract components as they arrive
-            matches = re.findall(r'\$\$\$({.*?})\$\$\$', temp_buffer, re.DOTALL)
-            for match in matches:
-                try:
-                    comp = json.loads(match)
-                    component_sequence.append({
-                        'id': comp.get('id'),
-                        'type': comp.get('type'),
-                        'data_points': len(comp.get('data', {}).get('series', [{}])[0].get('values', []))
-                    })
-                except:
-                    pass
+            # Try to extract components as they arrive using shared utility
+            all_components = extract_components_from_text(temp_buffer)
             
-            # Clear processed components
-            if matches:
-                temp_buffer = temp_buffer.split('$$$')[-1]
+            # Only process new components we haven't seen yet
+            new_components = all_components[processed_count:]
+            for comp in new_components:
+                series = comp.get('data', {}).get('series', [])
+                data_points = len(series[0].get('values', [])) if series else 0
+                component_sequence.append({
+                    'id': comp.get('id'),
+                    'type': comp.get('type'),
+                    'data_points': data_points
+                })
+            
+            # Update processed count
+            processed_count = len(all_components)
     
     print("\n\n" + "-"*80)
     print("📊 Component Update Sequence:")

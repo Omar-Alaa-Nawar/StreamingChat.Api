@@ -5,9 +5,9 @@
 **Branch**: `Phase-4` (to be merged to main)  
 **Status**: ✅ Complete and Ready for Production
 
-> **🆕 Phase 5.2 Update (October 16, 2025)**: Added multi-delayed-cards support! Now "show me two delayed cards" creates two cards with true delayed behavior (3-second delay + partial updates).
+> **🆕 Phase 5.1 Update (October 16, 2025)**: Added same-type multi-component support! Now "show me two line charts" creates two line charts (not line + bar mix).
 
-> **🆕 Phase 5.1 Update (October 17, 2025)**: Added same-type multi-component support! Now "show me two line charts" creates two line charts (not line + bar mix).
+> **🆕 Phase 5.2 Update (October 16, 2025)**: Added multi-delayed-cards support! Now "show me two delayed cards" creates two cards with true delayed behavior (3-second delay + partial updates).
 
 ---
 
@@ -438,9 +438,13 @@ When multiple charts are requested, the system intelligently selects presets:
 # User mentions specific themes
 "growth and revenue" → Growth Line + Revenue Bar
 
-# User requests count without types
-"two charts" → Sales Line + Revenue Bar (default order)
+# User requests count without types (uses deterministic fallback order)
+"two charts" → Sales Line + Revenue Bar
 "three charts" → Sales Line + Revenue Bar + Growth Line
+"four charts" → Sales Line + Revenue Bar + Growth Line + Performance Bar
+
+# Fallback preset order: ["sales_line", "revenue_bar", "growth_line", "performance_bar"]
+# System fills from this list in order until requested count is met
 ```
 
 ### 6. Configurable Limits
@@ -1643,7 +1647,7 @@ Ready for production with:
 - ✅ Multiple ChartComponent instances (1-3 per response)
 - ✅ Progressive interleaving for optimal UX
 - ✅ Full backward compatibility
-- ✅ Comprehensive testing (6 test scenarios)
+- ✅ Comprehensive testing (9 test scenarios)
 - ✅ Production-ready configuration
 
 **Next Step**: Implement frontend support for multi-component rendering! 🚀✨

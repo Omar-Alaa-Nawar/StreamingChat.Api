@@ -27,28 +27,27 @@ from schemas.component_schemas import ComponentData, SimpleComponentData
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Track components in current response (Phase 2)
-active_components: Dict[str, dict] = {}
 
-
-def track_component(component_id: str, data: dict):
+def track_component(component_id: str, data: dict, active_components: Dict[str, dict]):
     """
     Track component state during streaming.
     
     Args:
         component_id: UUID of the component
         data: Current data state of the component
+        active_components: Request-scoped component tracking dictionary
     """
     active_components[component_id] = data
     logger.info(f"Tracking component: {component_id}")
 
 
-def get_component_state(component_id: str) -> dict:
+def get_component_state(component_id: str, active_components: Dict[str, dict]) -> dict:
     """
     Get current state of tracked component.
     
     Args:
         component_id: UUID of the component
+        active_components: Request-scoped component tracking dictionary
         
     Returns:
         dict: Component data or empty dict if not found
@@ -56,7 +55,7 @@ def get_component_state(component_id: str) -> dict:
     return active_components.get(component_id, {})
 
 
-def create_empty_component(component_id: str) -> dict:
+def create_empty_component(component_id: str, active_components: Dict[str, dict]) -> dict:
     """
     Create empty component placeholder (Phase 2).
     
@@ -65,12 +64,13 @@ def create_empty_component(component_id: str) -> dict:
     
     Args:
         component_id: UUID for the component
+        active_components: Request-scoped component tracking dictionary
         
     Returns:
         dict: Empty component structure
         
     Example:
-        >>> comp = create_empty_component("abc-123")
+        >>> comp = create_empty_component("abc-123", {})
         >>> print(comp)
         {
             "type": "SimpleComponent",
@@ -84,7 +84,7 @@ def create_empty_component(component_id: str) -> dict:
         "data": {}
     }
     
-    track_component(component_id, {})
+    track_component(component_id, {}, active_components)
     logger.info(f"Created empty component: {component_id}")
     
     return component
@@ -94,7 +94,8 @@ def create_filled_component(
     component_id: str,
     title: str,
     description: str,
-    value: int
+    value: int,
+    active_components: Dict[str, dict]
 ) -> dict:
     """
     Create component with full data (Phase 2).
@@ -107,12 +108,13 @@ def create_filled_component(
         title: Component title
         description: Component description
         value: Numeric value
+        active_components: Request-scoped component tracking dictionary
         
     Returns:
         dict: Filled component structure
         
     Example:
-        >>> comp = create_filled_component("abc-123", "Card", "Data loaded", 100)
+        >>> comp = create_filled_component("abc-123", "Card", "Data loaded", 100, {})
         >>> print(comp)
         {
             "type": "SimpleComponent",
@@ -138,13 +140,13 @@ def create_filled_component(
         "data": data
     }
     
-    track_component(component_id, data)
+    track_component(component_id, data, active_components)
     logger.info(f"Filled component: {component_id} with data: {data}")
     
     return component
 
 
-def create_partial_update(component_id: str, data: dict) -> dict:
+def create_partial_update(component_id: str, data: dict, active_components: Dict[str, dict]) -> dict:
     """
     Create partial data update for existing component (Phase 2).
     
@@ -153,12 +155,13 @@ def create_partial_update(component_id: str, data: dict) -> dict:
     Args:
         component_id: UUID for the component
         data: Partial data to update
+        active_components: Request-scoped component tracking dictionary
         
     Returns:
         dict: Component update structure
         
     Example:
-        >>> update = create_partial_update("abc-123", {"title": "Loading..."})
+        >>> update = create_partial_update("abc-123", {"title": "Loading..."}, {})
         >>> print(update)
         {
             "type": "SimpleComponent",
@@ -173,22 +176,23 @@ def create_partial_update(component_id: str, data: dict) -> dict:
     }
     
     # Merge with existing state
-    existing_data = get_component_state(component_id)
+    existing_data = get_component_state(component_id, active_components)
     merged_data = {**existing_data, **data}
-    track_component(component_id, merged_data)
+    track_component(component_id, merged_data, active_components)
     
     logger.info(f"Partial update for component {component_id}: {data}")
     
     return component
 
 
-def validate_component_update(component_id: str, data: dict) -> bool:
+def validate_component_update(component_id: str, data: dict, active_components: Dict[str, dict]) -> bool:
     """
     Validate component update before sending (Phase 2).
     
     Args:
         component_id: UUID of the component
         data: Data to validate
+        active_components: Request-scoped component tracking dictionary
         
     Returns:
         bool: True if valid, False otherwise
@@ -216,7 +220,7 @@ def create_simple_component(
     Create a SimpleComponent with data (Legacy - Phase 1).
     
     DEPRECATED: Use create_filled_component() for Phase 2.
-    Kept for backwards compatibility.
+    Kept for backwards compatibility. This function will be removed in version 3.0 (expected Q1 2026).
 
     Args:
         title: Component title/heading
@@ -244,7 +248,7 @@ def create_simple_component(
     return component.model_dump()
 
 
-async def generate_card_with_delay() -> AsyncGenerator[bytes, None]:
+async def generate_card_with_delay(active_components: Dict[str, dict]) -> AsyncGenerator[bytes, None]:
     """
     Generate a card with partial progressive update (Phase 2.1 Fix).
     
@@ -258,6 +262,9 @@ async def generate_card_with_delay() -> AsyncGenerator[bytes, None]:
     
     Frontend should merge updates:
         {title, date, description: "loading..."} → {title, date, description: "success!", units}
+    
+    Args:
+        active_components: Request-scoped component tracking dictionary
     
     Yields:
         bytes: UTF-8 encoded chunks (JSON components only)
@@ -283,7 +290,7 @@ async def generate_card_with_delay() -> AsyncGenerator[bytes, None]:
         "data": initial_data
     }
     
-    track_component(component_id, initial_data)
+    track_component(component_id, initial_data, active_components)
     component_json = json.dumps(initial_component, separators=(',', ':'))
     yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
     await asyncio.sleep(0.1)
@@ -306,9 +313,9 @@ async def generate_card_with_delay() -> AsyncGenerator[bytes, None]:
     }
     
     # Update tracked state (merge with existing)
-    existing_data = get_component_state(component_id)
+    existing_data = get_component_state(component_id, active_components)
     merged_data = {**existing_data, **partial_update["data"]}
-    track_component(component_id, merged_data)
+    track_component(component_id, merged_data, active_components)
     
     component_json = json.dumps(partial_update, separators=(',', ':'))
     yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
@@ -362,15 +369,15 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         3. $$${"type":"SimpleComponent","id":"abc","data":{"title":"Card",...}}$$$
         4. " Done!"
     """
-    # Clear active components for new response
-    active_components.clear()
+    # Create request-scoped component tracking dictionary
+    active_components: Dict[str, dict] = {}
     
     user_message_lower = user_message.lower()
 
     # Pattern 0: Partial progressive update (Phase 2.1 Fix)
     # Triggered by "delayed card" or "partial card"
     if ("delayed" in user_message_lower or "partial" in user_message_lower) and "card" in user_message_lower:
-        async for chunk in generate_card_with_delay():
+        async for chunk in generate_card_with_delay(active_components):
             yield chunk
         return
     
@@ -380,7 +387,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         
         # Stage 1: Send empty component (creates placeholder)
         component_id = generate_uuid7()
-        empty_component = create_empty_component(component_id)
+        empty_component = create_empty_component(component_id, active_components)
         component_json = json.dumps(empty_component, separators=(',', ':'))
         yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
         await asyncio.sleep(settings.STREAM_DELAY)
@@ -404,7 +411,8 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
             component_id,
             title="Dynamic Card",
             description="Data loaded successfully from the backend",
-            value=150
+            value=150,
+            active_components=active_components
         )
         component_json = json.dumps(filled_component, separators=(',', ':'))
         yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
@@ -437,7 +445,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
             comp_id = generate_uuid7()
             component_ids.append(comp_id)
             
-            empty = create_empty_component(comp_id)
+            empty = create_empty_component(comp_id, active_components)
             component_json = json.dumps(empty, separators=(',', ':'))
             yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
             await asyncio.sleep(0.1)  # Quick succession
@@ -462,7 +470,8 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
                 comp_id,
                 title=f"Card {i+1}",
                 description=f"This is card number {i+1} with unique data",
-                value=(i+1) * 100
+                value=(i+1) * 100,
+                active_components=active_components
             )
             component_json = json.dumps(filled, separators=(',', ':'))
             yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
@@ -480,7 +489,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         component_id = generate_uuid7()
         
         # Stage 1: Empty component
-        empty = create_empty_component(component_id)
+        empty = create_empty_component(component_id, active_components)
         component_json = json.dumps(empty, separators=(',', ':'))
         yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
         await asyncio.sleep(0.2)
@@ -489,7 +498,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         await asyncio.sleep(0.3)
         
         # Stage 2: Update with title only
-        partial1 = create_partial_update(component_id, {"title": "Loading..."})
+        partial1 = create_partial_update(component_id, {"title": "Loading..."}, active_components)
         component_json = json.dumps(partial1, separators=(',', ':'))
         yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
         await asyncio.sleep(0.5)
@@ -498,7 +507,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         partial2 = create_partial_update(component_id, {
             "title": "Progressive Card",
             "description": "Description loaded..."
-        })
+        }, active_components)
         component_json = json.dumps(partial2, separators=(',', ':'))
         yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")
         await asyncio.sleep(0.5)
@@ -508,7 +517,8 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
             component_id,
             title="Progressive Card",
             description="All data loaded successfully!",
-            value=100
+            value=100,
+            active_components=active_components
         )
         component_json = json.dumps(filled, separators=(',', ':'))
         yield f"{settings.COMPONENT_DELIMITER}{component_json}{settings.COMPONENT_DELIMITER}".encode("utf-8")

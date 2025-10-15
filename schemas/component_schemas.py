@@ -8,7 +8,7 @@ React components on the frontend.
 
 from pydantic import BaseModel, Field
 from typing import Any, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class ComponentData(BaseModel):
@@ -55,7 +55,7 @@ class SimpleComponentData(BaseModel):
     description: str = Field(..., description="Component description text")
     value: Optional[int] = Field(None, description="Optional numeric value")
     timestamp: Optional[str] = Field(
-        default_factory=lambda: datetime.now().isoformat(),
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         description="ISO 8601 timestamp"
     )
 
@@ -85,16 +85,47 @@ class ChartComponentData(BaseModel):
     pass
 
 
-class TableComponentData(BaseModel):
+class TableAComponentData(BaseModel):
     """
-    Future: Data payload for table components.
+    Data payload for TableA component (Phase 3).
 
-    Will support:
-    - columns: Column definitions
-    - rows: Array of row data
-    - pagination: Pagination settings
+    TableA is a progressive, row-by-row streaming table component with:
+    - columns: Array of column headers (strings)
+    - rows: Array of row data (each row is an array of values)
+
+    Progressive loading pattern:
+    1. Send empty table with columns: {"columns": ["Name", "Sales"], "rows": []}
+    2. Stream rows incrementally: {"rows": [["Alice", 100]]}
+    3. Backend merges rows: rows = [...existing.rows, ...new.rows]
+    4. Final state shows complete table with all data
+
+    Example:
+        Initial: {"columns": ["Name", "Sales", "Region"], "rows": []}
+        Update 1: {"rows": [["Alice", 123, "US"]]}
+        Update 2: {"rows": [["Bob", 234, "UK"]]}
+        Final merged: {"columns": [...], "rows": [["Alice", 123, "US"], ["Bob", 234, "UK"]]}
     """
-    pass
+    columns: list[str] = Field(default_factory=list, description="Array of column header names")
+    rows: list[list[Any]] = Field(default_factory=list, description="Array of row data arrays")
+    total_rows: Optional[int] = Field(None, description="Expected total row count (for progress tracking)")
+    timestamp: Optional[str] = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        description="ISO 8601 timestamp"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "columns": ["Name", "Sales", "Region"],
+                "rows": [
+                    ["Alice", 123, "US"],
+                    ["Bob", 234, "UK"],
+                    ["Carlos", 345, "DE"]
+                ],
+                "total_rows": 3,
+                "timestamp": "2025-10-15T12:34:56.789Z"
+            }
+        }
 
 
 class FormComponentData(BaseModel):

@@ -1,6 +1,20 @@
-# StreamForge Backend - Phase 0
+# StreamForge Backend - Phase 3 ✅
 
-Enterprise FastAPI backend for streaming chat application with real-time Server-Sent Events (SSE).
+Enterprise FastAPI backend for streaming chat application with progressive component rendering and TableA support.
+
+**Current Version**: 0.3.0  
+**Status**: Phase 3 Complete - TableA Component Implemented
+
+## 🎯 Features
+
+- ✅ **Real-time Server-Sent Events (SSE)** streaming
+- ✅ **Progressive Component Rendering** (Phase 2)
+- ✅ **SimpleComponent** with empty → data update flow
+- ✅ **TableA Component** with row-by-row streaming (Phase 3)
+- ✅ Multiple component support (up to 5 per response)
+- ✅ Component state tracking and merge logic
+- ✅ Predefined table schemas (sales, users, products)
+- 🔄 **LLM Integration** (coming in Phase 4)
 
 ## Project Structure
 
@@ -38,6 +52,7 @@ Client Request → Router → Service → Async Generator → SSE Stream → Cli
 ## Installation
 
 1. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -45,18 +60,21 @@ pip install -r requirements.txt
 ## Running the Application
 
 ### Method 1: Using Python directly (Recommended)
+
 ```bash
 cd C:\Users\omar.nawar\streamforge\backend
 python main.py
 ```
 
 ### Method 2: Using uvicorn command
+
 ```bash
 cd C:\Users\omar.nawar\streamforge\backend
 uvicorn main:app --reload
 ```
 
 ### Method 3: Using the batch file (Windows)
+
 ```bash
 cd C:\Users\omar.nawar\streamforge\backend
 start.bat
@@ -67,22 +85,26 @@ The API will be available at `http://localhost:8000`
 ## API Endpoints
 
 ### Root Endpoint
+
 - **GET** `/` - API information and available endpoints
 - **GET** `/health` - Global health check
 
 ### Chat Endpoints
+
 - **POST** `/chat` - Stream chat response using SSE
   - Body: `{"message": "your message here"}`
   - Response: Server-Sent Events stream
 - **GET** `/chat/health` - Chat service health check
 
 ### Documentation
+
 - **GET** `/docs` - Interactive API documentation (Swagger UI)
 - **GET** `/openapi.json` - OpenAPI schema
 
 ## Testing the Streaming Endpoint
 
 ### Using curl
+
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
@@ -90,6 +112,7 @@ curl -X POST http://localhost:8000/chat \
 ```
 
 ### Expected Response
+
 ```
 data: This
 data: is
@@ -101,6 +124,7 @@ data: response
 ```
 
 ### Using Python
+
 ```python
 import requests
 
@@ -135,16 +159,19 @@ Configuration is centralized in `config/settings.py`:
 ## Future Phases
 
 ### Phase 1: LLM Integration
+
 - Integrate LangChain
 - Connect to OpenAI/Anthropic APIs
 - Real LLM streaming responses
 
 ### Phase 2: RAG (Retrieval-Augmented Generation)
+
 - Vector store integration
 - Document embedding and retrieval
 - Knowledge-augmented responses
 
 ### Phase 3: Advanced Features
+
 - Conversation memory
 - Multiple LLM providers
 - Custom prompts and templates

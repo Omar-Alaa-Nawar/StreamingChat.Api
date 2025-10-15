@@ -74,11 +74,15 @@ async def chat_stream(request: ChatRequest):
     """
     return StreamingResponse(
         generate_chunks(request.message),
-        media_type="text/event-stream",
+        media_type="text/plain",  # Changed from text/event-stream for better streaming
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Content-Encoding": "identity",  # Disable compression buffering
+            "Transfer-Encoding": "chunked",  # Force chunked encoding
         }
     )
 

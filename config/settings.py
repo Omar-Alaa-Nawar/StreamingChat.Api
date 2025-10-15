@@ -16,7 +16,12 @@ class Settings:
 
     # Application settings
     APP_NAME: str = "StreamForge API"
-    APP_VERSION: str = "0.1.0"
+    
+    # Semantic versioning components
+    APP_VERSION_MAJOR: int = 0
+    APP_VERSION_MINOR: int = 2
+    APP_VERSION_PATCH: int = 0
+    APP_VERSION: str = f"{APP_VERSION_MAJOR}.{APP_VERSION_MINOR}.{APP_VERSION_PATCH}"  # Phase 1: Component streaming support
 
     # CORS settings
     CORS_ORIGINS: list = [
@@ -31,6 +36,11 @@ class Settings:
 
     # Streaming settings
     STREAM_DELAY: float = 0.1  # Delay between chunks in seconds
+
+    # Component streaming settings (Phase 1)
+    ENABLE_COMPONENTS: bool = True  # Enable JSON component streaming
+    COMPONENT_DELIMITER: str = "$$"  # Delimiter for JSON components
+    COMPONENT_TYPES: list = ["SimpleComponent"]  # Supported component types
 
     # Future LLM configuration placeholders
     # These will be populated when integrating with LangChain

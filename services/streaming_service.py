@@ -283,26 +283,29 @@ def create_table_row_update(table_id: str, new_rows: list[list], active_componen
             }
         }
     """
-    component = {
-        "type": "TableA",
-        "id": table_id,
-        "data": {
-            "rows": new_rows
-        }
-    }
-    
     # Merge with existing state
     existing_data = get_component_state(table_id, active_components)
     existing_rows = existing_data.get("rows", [])
+    existing_columns = existing_data.get("columns", [])
     merged_rows = existing_rows + new_rows
     
     merged_data = {
-        **existing_data,
+        "columns": existing_columns,
         "rows": merged_rows
     }
     track_component(table_id, merged_data, active_components)
     
     logger.info(f"Added {len(new_rows)} row(s) to table {table_id}. Total rows: {len(merged_rows)}")
+    
+    # Include columns in the update so tests can identify table type
+    component = {
+        "type": "TableA",
+        "id": table_id,
+        "data": {
+            "columns": existing_columns,
+            "rows": new_rows
+        }
+    }
     
     return component
 
@@ -1133,17 +1136,17 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
         if re.search(r'\b(bar|revenue|performance)\b', user_message_lower):
             if "revenue" in user_message_lower:
                 chart_presets.append("revenue_bar")
-            if "performance" in user_message_lower:
+            elif "performance" in user_message_lower:
                 chart_presets.append("performance_bar")
-            if "bar" in user_message_lower and not chart_presets:
+            elif "bar" in user_message_lower:
                 chart_presets.append("revenue_bar")
         
         if re.search(r'\b(line|trend|growth|sales)\b', user_message_lower):
             if "growth" in user_message_lower:
                 chart_presets.append("growth_line")
-            if "sales" in user_message_lower:
+            elif "sales" in user_message_lower:
                 chart_presets.append("sales_line")
-            if ("line" in user_message_lower or "trend" in user_message_lower) and not chart_presets:
+            elif "line" in user_message_lower or "trend" in user_message_lower:
                 chart_presets.append("sales_line")
         
         # If no specific presets mentioned, use default
@@ -1243,7 +1246,7 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
             for chart_info in charts_data:
                 if point_idx < len(chart_info["values"]):
                     value = chart_info["values"][point_idx]
-                    data_update = create_chart_data_update(
+                    data_update = create_cumulative_chart_update(
                         chart_info["id"],
                         [value],
                         chart_info["series_label"],

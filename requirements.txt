@@ -10,7 +10,12 @@ uvicorn[standard]==0.24.0
 # Required for handling multipart form data
 python-multipart==0.0.6
 
-# Future dependencies (commented out for Phase 0):
+# Phase 6: AWS Bedrock LLM Integration
+aioboto3==12.3.0             # Async AWS SDK for Python
+boto3==1.34.34               # AWS SDK for Python
+botocore==1.34.34            # Low-level AWS SDK core
+
+# Future dependencies (for later phases):
 # langchain==0.0.340           # LangChain for LLM orchestration
 # langchain-openai==0.0.2      # OpenAI integration
 # langchain-anthropic==0.0.1   # Anthropic integration

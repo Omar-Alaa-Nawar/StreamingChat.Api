@@ -16,7 +16,7 @@ class Settings:
 
     # Application settings
     APP_NAME: str = "StreamForge API"
-    APP_VERSION: str = "0.5.2"  # Phase 5.2: Multi-card (delayed SimpleComponent) support
+    APP_VERSION: str = "0.6.0"  # Phase 6: LLM Integration Service
 
     # CORS settings
     CORS_ORIGINS: list = [

@@ -103,32 +103,40 @@ async def _route_to_handler(
 
 async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     """
-    Generate streaming response with progressive component updates (Phase 3).
+    Generate streaming response with progressive component updates.
 
-    Phase 3 Implementation:
+    Phase 6 Implementation (NEW):
+    - LLM-Driven component generation for intelligent queries
+    - Uses AWS Bedrock (Claude 3.5 Haiku) for dynamic planning
+    - Routes to LLM planner when AI/dashboard keywords detected
+
+    Phase 3-5 Implementation:
     - Extends Phase 2 with TableA component support
     - Streams table rows progressively: skeleton → row-by-row → complete
     - Maintains backward compatibility with all Phase 2 patterns
-    - Supports multiple component types: SimpleComponent, TableA
+    - Supports multiple component types: SimpleComponent, TableA, ChartComponent
 
     Phase 2.1 Fix:
     - Added delayed card update pattern (5-second delay)
     - Validates progressive component lifecycle with timing
 
     Flow:
-    1. Detect user intent from message
-    2. Send empty component(s) as placeholder(s)
-    3. Stream explanatory text while "loading"
-    4. Update component(s) with actual data (incrementally for tables)
-    5. Stream completion message
+    1. Check for LLM keywords → Route to LLM planner (Phase 6)
+    2. Otherwise: Detect user intent from message (legacy pattern matching)
+    3. Send empty component(s) as placeholder(s)
+    4. Stream explanatory text while "loading"
+    5. Update component(s) with actual data (incrementally for tables)
+    6. Stream completion message
 
     Supported patterns:
+    - LLM-driven component generation (Phase 6 NEW)
     - Single component with progressive load
     - Multiple components with staggered updates
     - Mixed text and components
     - Incremental data updates
     - Delayed card update (5-second delay) - Phase 2.1
-    - TableA with progressive row streaming (Phase 3 NEW)
+    - TableA with progressive row streaming (Phase 3)
+    - ChartComponent with progressive data streaming (Phase 4)
 
     Args:
         user_message: The user's input message
@@ -136,9 +144,17 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     Yields:
         bytes: UTF-8 encoded chunks (text or JSON components)
 
-    Example Output (TableA):
+    Example Output (LLM Mode):
+        User: "show me ai dashboard with sales trends"
+
+        Stream:
+        1. $$${"type":"SimpleComponent","id":"...","data":{"title":"Sales Dashboard"}}$$$
+        2. $$${"type":"ChartComponent","id":"...","data":{"chart_type":"line",...}}$$$
+        3. $$${"type":"TableA","id":"...","data":{"columns":[...],"rows":[...]}}$$$
+
+    Example Output (Legacy TableA):
         User: "show me sales table"
-        
+
         Stream:
         1. $$${"type":"TableA","id":"abc","data":{"columns":[...],"rows":[]}}$$$
         2. "Loading data..."
@@ -149,7 +165,45 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     # Create request-scoped component tracking dictionary
     active_components: Dict[str, dict] = {}
     user_message_lower = user_message.lower()
-    
+
+    # Phase 6: LLM-Driven Planning
+    # Check if message contains AI/intelligent query keywords
+    llm_keywords = re.search(
+        r'\b(ai|llm|plan|analyze|dashboard|intelligent|smart|insights?|summary)\b',
+        user_message_lower
+    )
+
+    if llm_keywords:
+        logger.info("🧠 Phase 6: Routing to LLM Planner Service")
+        try:
+            from services.llm import llm_planner_service
+            from .core import format_component
+
+            # Generate layout using LLM
+            layout = await llm_planner_service.generate_layout(user_message)
+
+            # Stream components directly (no progressive loading for LLM mode)
+            for component in layout["components"]:
+                formatted = format_component(component)
+                yield formatted.encode("utf-8")
+                await asyncio.sleep(0.1)  # Small delay between components
+
+            # Log success
+            num_components = len(layout["components"])
+            from_cache = layout.get("from_cache", False)
+            processing_time = layout.get("processing_time_ms", 0)
+            logger.info(
+                f"✓ LLM generated {num_components} components "
+                f"in {processing_time:.1f}ms (cached: {from_cache})"
+            )
+            return
+
+        except ImportError:
+            logger.warning("LLM service not available, falling back to pattern matching")
+        except Exception as e:
+            logger.error(f"LLM planning failed: {e}, falling back to pattern matching")
+
+    # Legacy pattern matching (Phase 0-5)
     # Detect pattern and route to appropriate handler
     pattern_type = _detect_pattern_type(user_message_lower)
     async for chunk in _route_to_handler(pattern_type, user_message_lower, active_components):

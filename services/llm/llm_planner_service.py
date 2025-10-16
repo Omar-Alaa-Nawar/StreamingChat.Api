@@ -7,6 +7,7 @@ plan and generate dashboard components based on natural language queries.
 Phase 6: LLM-Driven Dynamic Component Generation
 """
 
+import asyncio
 import json
 import logging
 import hashlib
@@ -77,6 +78,23 @@ class LLMPlannerService:
                 "AWS Bedrock dependencies not installed. "
                 "Install with: pip install aioboto3 boto3 botocore"
             )
+
+    def _calculate_backoff_time(self, attempt: int) -> float:
+        """
+        Calculate exponential backoff time for retry attempts.
+
+        Args:
+            attempt: Current retry attempt number (0-indexed)
+
+        Returns:
+            float: Wait time in seconds (2^attempt)
+
+        Example:
+            >>> service._calculate_backoff_time(0)  # 1 second
+            >>> service._calculate_backoff_time(1)  # 2 seconds
+            >>> service._calculate_backoff_time(2)  # 4 seconds
+        """
+        return 2 ** attempt
 
     async def generate_layout(self, user_message: str) -> Dict[str, Any]:
         """
@@ -296,7 +314,7 @@ Output only the $$$ JSON array $$$ with no extra text.
                 )
 
                 if attempt < self.MAX_RETRIES - 1:
-                    wait_time = 2 ** attempt  # Exponential backoff
+                    wait_time = self._calculate_backoff_time(attempt)
                     logger.info(f"Retrying in {wait_time}s...")
                     await asyncio.sleep(wait_time)
                 else:
@@ -305,7 +323,7 @@ Output only the $$$ JSON array $$$ with no extra text.
             except Exception as e:
                 logger.error(f"Unexpected error calling Bedrock: {e}")
                 if attempt < self.MAX_RETRIES - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(self._calculate_backoff_time(attempt))
                 else:
                     raise
 
@@ -568,7 +586,3 @@ Output only the $$$ JSON array $$$ with no extra text.
                 }
             }
         ]
-
-
-# Add missing asyncio import for sleep
-import asyncio

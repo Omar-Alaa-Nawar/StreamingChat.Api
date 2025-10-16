@@ -167,7 +167,25 @@ async def generate_chunks(user_message: str) -> AsyncGenerator[bytes, None]:
     user_message_lower = user_message.lower()
 
     # Phase 6: LLM-Driven Planning
-    # Check if message contains AI/intelligent query keywords
+    # ----------------------------------------------------------------------------
+    # LLM Keyword Detection Pattern
+    # This regex determines whether the user's message should be routed to the LLM planner.
+    # Matches if any of the following keywords appear as whole words (case-insensitive):
+    #   ai, llm, plan, analyze, dashboard, intelligent, smart, insight, insights, summary
+    #
+    # Example matches (will trigger LLM routing):
+    #   "Show me an AI dashboard"
+    #   "Can you analyze this data?"
+    #   "Give me a summary of sales"
+    #   "I want smart insights"
+    #   "Generate a plan for Q2"
+    #
+    # Example non-matches (will NOT trigger LLM routing):
+    #   "Show me sales table"
+    #   "List all customers"
+    #   "Display chart of revenue"
+    #   "What is the total revenue?"
+    # ----------------------------------------------------------------------------
     llm_keywords = re.search(
         r'\b(ai|llm|plan|analyze|dashboard|intelligent|smart|insights?|summary)\b',
         user_message_lower

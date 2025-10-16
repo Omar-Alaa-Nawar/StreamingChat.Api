@@ -1,9 +1,9 @@
-# StreamForge Backend - Phase 3 ✅
+# StreamForge Backend - Phase 5 ✅
 
-Enterprise FastAPI backend for streaming chat application with progressive component rendering and TableA support.
+Enterprise FastAPI backend for streaming chat application with progressive component rendering and multi-component support.
 
-**Current Version**: 0.3.0  
-**Status**: Phase 3 Complete - TableA Component Implemented
+**Current Version**: 0.6.0  
+**Status**: Phase 5 Complete - Multi-Component Streaming + Refactored Architecture
 
 ## 🎯 Features
 
@@ -11,27 +11,55 @@ Enterprise FastAPI backend for streaming chat application with progressive compo
 - ✅ **Progressive Component Rendering** (Phase 2)
 - ✅ **SimpleComponent** with empty → data update flow
 - ✅ **TableA Component** with row-by-row streaming (Phase 3)
-- ✅ Multiple component support (up to 5 per response)
+- ✅ **ChartComponent** with progressive data points (Phase 4)
+- ✅ **Multi-Component Support** - Multiple tables, charts, cards (Phase 5)
+- ✅ **Modular Architecture** - Refactored from 1,363-line monolith to 7 focused modules
+- ✅ **Code Quality** - All SonarQube complexity issues resolved
 - ✅ Component state tracking and merge logic
 - ✅ Predefined table schemas (sales, users, products)
-- 🔄 **LLM Integration** (coming in Phase 4)
+- ✅ Predefined chart types (line, bar)
+- 🔄 **LLM Integration** (coming soon)
+
+## 📚 Documentation
+
+**🎯 Main Documentation:** See [STREAMING_SERVICE_REFACTOR.md](STREAMING_SERVICE_REFACTOR.md) for complete details on:
+- Architecture overview
+- Module documentation
+- Migration guide
+- Code quality improvements
+- Testing & validation
+
+**🚀 Quick Start:** See [QUICKSTART.md](QUICKSTART.md) for setup instructions
 
 ## Project Structure
 
 ```
 backend/
-├── main.py                    # FastAPI application entry point
+├── main.py                          # FastAPI application entry point
 ├── routers/
-│   └── chat.py               # Chat endpoints with streaming
+│   └── chat.py                     # Chat endpoints with streaming
 ├── services/
-│   ├── streaming_service.py  # Core streaming logic
-│   └── chain_service.py      # Chain creation (future LLM integration)
+│   └── streaming_service/          # 🆕 Modular streaming service
+│       ├── __init__.py             # Public API exports
+│       ├── core.py                 # Shared utilities
+│       ├── constants.py            # Configuration
+│       ├── simple_component.py     # SimpleComponent logic
+│       ├── table_component.py      # TableA logic
+│       ├── chart_component.py      # ChartComponent logic
+│       └── patterns.py             # Pattern detection & routing
 ├── chains/
 │   └── core/
-│       └── llm_setup.py      # LLM setup placeholder
+│       └── llm_setup.py            # LLM setup placeholder
+├── schemas/
+│   └── component_schemas.py        # Pydantic component models
 ├── config/
-│   └── settings.py           # Centralized configuration
-└── requirements.txt          # Python dependencies
+│   └── settings.py                 # Centralized configuration
+├── tests/
+│   ├── test_phase3.py              # TableA tests
+│   ├── test_phase4.py              # ChartComponent tests
+│   ├── test_phase5.py              # Multi-component tests
+│   └── quick_test.py               # Smoke tests
+└── requirements.txt                # Python dependencies
 ```
 
 ## Architecture
@@ -39,14 +67,21 @@ backend/
 ### Separation of Concerns
 
 - **Routers** (`routers/`): API endpoint definitions and request/response handling
-- **Services** (`services/`): Business logic and core functionality
+- **Services** (`services/streaming_service/`): Modular streaming business logic
+  - `patterns.py`: Pattern detection and routing
+  - `simple_component.py`: Card/SimpleComponent handlers
+  - `table_component.py`: TableA progressive streaming
+  - `chart_component.py`: ChartComponent progressive streaming
+  - `core.py`: Shared utilities and validation
+  - `constants.py`: Configuration and presets
 - **Chains** (`chains/`): LangChain integration placeholders (future phases)
+- **Schemas** (`schemas/`): Pydantic models for type safety
 - **Config** (`config/`): Centralized configuration management
 
 ### Streaming Flow
 
 ```
-Client Request → Router → Service → Async Generator → SSE Stream → Client
+Client Request → Router → Pattern Detection → Component Handler → Progressive Updates → SSE Stream → Client
 ```
 
 ## Installation

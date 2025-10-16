@@ -46,6 +46,7 @@ services/
 ```
 
 **Problems:**
+
 - ❌ Hard to navigate (1,363 lines to scroll)
 - ❌ Mixed concerns (all patterns in one function)
 - ❌ Difficult to test individual components
@@ -69,6 +70,7 @@ services/
 ```
 
 **Benefits:**
+
 - ✅ Clear separation of concerns
 - ✅ Easy to locate and modify specific features
 - ✅ Independent testing of each component
@@ -160,11 +162,13 @@ services/
 **Purpose:** Maintains backward compatibility by re-exporting all public functions.
 
 **Exports:**
+
 - `generate_chunks()` - Main streaming router
 - `validate_component()` - Component validation
 - All component creation functions (empty, filled, partial updates)
 
 **Import Example:**
+
 ```python
 # All existing imports still work!
 from services.streaming_service import generate_chunks
@@ -178,6 +182,7 @@ from services.streaming_service import create_empty_table
 **Purpose:** Common helpers used across all component types.
 
 **Functions:**
+
 - `track_component(component_id, state, active_components)` - Track component state during streaming
 - `get_component_state(component_id, active_components)` - Retrieve current component state
 - `validate_component_update(component_id, update, active_components)` - Validate updates before sending
@@ -185,6 +190,7 @@ from services.streaming_service import create_empty_table
 - `format_component(component)` - Wrap component with delimiters
 
 **Shared Resources:**
+
 - Logger instance
 - Common imports (asyncio, json, uuid, datetime)
 
@@ -195,6 +201,7 @@ from services.streaming_service import create_empty_table
 **Purpose:** Centralize all pattern keywords, regex patterns, and settings.
 
 **Constants:**
+
 - `COMPONENT_DELIMITER` - Delimiter for wrapping components (`$$$`)
 - `MULTI_KEYWORDS` - Keywords for detecting multiple components
 - `TABLE_KEYWORDS`, `CHART_KEYWORDS`, `CARD_KEYWORDS` - Pattern detection
@@ -210,6 +217,7 @@ from services.streaming_service import create_empty_table
 **Purpose:** Handle all SimpleComponent creation and progressive updates.
 
 **Functions:**
+
 - `create_empty_component(component_id, active_components)` - Empty placeholder (Phase 2)
 - `create_filled_component(component_id, active_components)` - Component with full data
 - `create_partial_update(component_id, fields, active_components)` - Incremental updates
@@ -220,6 +228,7 @@ from services.streaming_service import create_empty_table
 - `handle_incremental_loading(active_components)` - Incremental loading pattern
 
 **Supported Patterns:**
+
 - Phase 1: Basic card creation
 - Phase 2: Progressive updates (empty → partial → filled)
 - Phase 2.1: Delayed updates (5-second delay)
@@ -232,6 +241,7 @@ from services.streaming_service import create_empty_table
 **Purpose:** Handle all TableA creation and progressive row streaming.
 
 **Functions:**
+
 - `create_empty_table(table_id, columns, active_components)` - Empty table with columns only
 - `create_table_row_update(table_id, new_rows, active_components)` - Add new rows
 - `create_filled_table(table_id, active_components)` - Table with all data
@@ -240,10 +250,12 @@ from services.streaming_service import create_empty_table
 - Helper functions: `_determine_table_count()`, `_detect_table_types()`, `_prepare_table_data()`
 
 **Supported Patterns:**
+
 - Phase 3: Single table with progressive rows
 - Phase 5.1: Multiple tables (same type or mixed types)
 
 **Table Types:**
+
 - Sales: Name, Sales, Region (5 rows)
 - Users: Username, Email, Role, Status (5 rows)
 - Products: Product, Category, Price, Stock (5 rows)
@@ -255,6 +267,7 @@ from services.streaming_service import create_empty_table
 **Purpose:** Handle all ChartComponent creation and progressive data streaming.
 
 **Functions:**
+
 - `create_empty_chart(chart_id, chart_type, title, x_axis, active_components)` - Empty chart skeleton
 - `create_cumulative_chart_update(chart_id, new_values, series_label, active_components)` - Add data points
 - `create_filled_chart(chart_id, active_components)` - Chart with all data
@@ -262,10 +275,12 @@ from services.streaming_service import create_empty_table
 - Helper functions: `_determine_chart_count()`, `_detect_chart_presets()`, `_prepare_chart_data()`
 
 **Supported Patterns:**
+
 - Phase 4: Single chart with progressive data points
 - Phase 5.1: Multiple charts (same type or mixed types)
 
 **Chart Types:**
+
 - Line Chart: Sales Over Time (5 data points)
 - Bar Chart: Revenue by Region (4 data points)
 
@@ -276,11 +291,13 @@ from services.streaming_service import create_empty_table
 **Purpose:** Detect user intent and route to appropriate handler.
 
 **Functions:**
+
 - `generate_chunks(user_message)` - Main entry point for streaming
 - `_route_to_handler(pattern_type, user_message_lower, active_components)` - Dispatch to handler
 - Pattern detection helpers: `_is_delayed_single_card()`, `_is_table_request()`, etc.
 
 **Supported Patterns:**
+
 1. **DELAYED_SINGLE_CARD** - Single card with 5-second delay
 2. **SINGLE_CARD** - Normal single card
 3. **DELAYED_MULTI_CARDS** - Multiple cards with delayed updates (Phase 5.2)
@@ -339,12 +356,12 @@ All SonarQube code quality issues have been resolved through careful refactoring
 
 ### Cognitive Complexity Reductions
 
-| Function                     | Before | After | Improvement | Method                                    |
-| ---------------------------- | ------ | ----- | ----------- | ----------------------------------------- |
-| `generate_chunks()`          | 22     | <10   | -55%        | Extracted `_route_to_handler()`           |
-| `_route_to_handler()`        | 24     | <10   | -58%        | Dispatch dictionaries instead of if-elif  |
-| `handle_tables()`            | 39     | <10   | -74%        | Extracted 4 helper functions              |
-| `handle_charts()`            | 47     | <10   | -79%        | Extracted 4 helper functions              |
+| Function              | Before | After | Improvement | Method                                   |
+| --------------------- | ------ | ----- | ----------- | ---------------------------------------- |
+| `generate_chunks()`   | 22     | <10   | -55%        | Extracted `_route_to_handler()`          |
+| `_route_to_handler()` | 24     | <10   | -58%        | Dispatch dictionaries instead of if-elif |
+| `handle_tables()`     | 39     | <10   | -74%        | Extracted 4 helper functions             |
+| `handle_charts()`     | 47     | <10   | -79%        | Extracted 4 helper functions             |
 
 ### Other Fixes
 
@@ -355,12 +372,12 @@ All SonarQube code quality issues have been resolved through careful refactoring
 
 ### SonarQube Compliance
 
-| Metric                | Target | Achieved | Status |
-| --------------------- | ------ | -------- | ------ |
-| Cognitive Complexity  | ≤15    | <10      | ✅ Pass |
-| Regex Complexity      | ≤20    | <15      | ✅ Pass |
-| Function Length       | ≤60    | <50      | ✅ Pass |
-| Code Duplication      | <3%    | <1%      | ✅ Pass |
+| Metric               | Target | Achieved | Status  |
+| -------------------- | ------ | -------- | ------- |
+| Cognitive Complexity | ≤15    | <10      | ✅ Pass |
+| Regex Complexity     | ≤20    | <15      | ✅ Pass |
+| Function Length      | ≤60    | <50      | ✅ Pass |
+| Code Duplication     | <3%    | <1%      | ✅ Pass |
 
 ---
 
@@ -422,6 +439,7 @@ python quick_test.py
 The new modular architecture makes it easy to add new features:
 
 ### Easy to Add:
+
 1. **New Component Types** - Just add a new file like `map_component.py`
 2. **New Patterns** - Add pattern detection in `patterns.py` and route to handler
 3. **Custom Presets** - Extend `constants.py` with new data presets
@@ -429,6 +447,7 @@ The new modular architecture makes it easy to add new features:
 5. **Performance Monitoring** - Add metrics collection in `core.py`
 
 ### Recommended Next Steps:
+
 1. ✅ Delete old `streaming_service.py` backup after confirming everything works
 2. ⏳ Add unit tests for individual modules
 3. ⏳ Add integration tests for cross-module interactions
@@ -454,6 +473,7 @@ The codebase is now significantly more maintainable, testable, and ready for fut
 ---
 
 **Need Help?**
+
 - Check module documentation above
 - Review test files for usage examples
 - See `patterns.py` for supported patterns

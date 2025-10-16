@@ -23,6 +23,7 @@ Enterprise FastAPI backend for streaming chat application with progressive compo
 ## 📚 Documentation
 
 **🎯 Main Documentation:** See [STREAMING_SERVICE_REFACTOR.md](STREAMING_SERVICE_REFACTOR.md) for complete details on:
+
 - Architecture overview
 - Module documentation
 - Migration guide
